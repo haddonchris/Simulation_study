@@ -189,93 +189,6 @@ graphics.off()
     rm(rivers, lake, rst, lake_rst, rivers_rst, water)
   }
 
-  # Animal variables
-  {
-    cat("Getting Animal interaction data...", "\n")
-    gnp_species <- read.csv("./Data/GNP_game_counts.csv") |>
-      filter(year >= 2000) |> # Only keep counts after the year 2000
-      dplyr::select(-c(X, X.1, X.2, X.3, X.4)) |> # Remove unnecessary vars
-      mutate(
-        species = as.factor(species),
-        species = recode_factor(
-          # Fix naming issues
-          species,
-          "Blue wildebeest" = "Blue Wildebeest",
-          "oribi" = "Oribi"
-        ),
-        species = str_replace_all(species, "\\s", "_") # Replace spaces with underscores
-      ) |>
-      filter(
-        species %in%
-          c(
-            "Blue_Wildebeest",
-            "Buffalo",
-            "Eland",
-            "Elephant",
-            "Hartebeest",
-            "Impala",
-            "Waterbuck",
-            "Zebra"
-          )
-      )
-
-    # Get the counts of each species:
-    animal_counts <- gnp_species |>
-      group_by(species) |>
-      summarise(obs = n(), counts = sum(number))
-
-    # Add UTM columns to the data frame
-    gnp_species <- suppressMessages(add_utm_columns(
-      gnp_species,
-      c("long", "lat"),
-      units = "m"
-    )) |>
-      rename(x = X, y = Y)
-
-    # Make a spatial points data frame:
-    spdf <- gnp_species
-    coordinates(spdf) <- c("x", "y")
-    projection(spdf) <- CRS("+init=epsg:32736")
-
-    # Make the Utilisation Distributions
-    ud_select_species <- kernelUD(spdf[, "species"], h = 'href')
-
-    rst <- rast("./satellite_images/Elevation/elevation_export.tif")
-
-    m <- 1000000000
-
-    gnu <- resample(terra::rast(ud_select_species[["Blue_Wildebeest"]]), rst) *
-      m
-    varnames(gnu) <- "Blue_wildebeest"
-    buffalo <- resample(terra::rast(ud_select_species[["Buffalo"]]), rst) * m
-    varnames(buffalo) <- "Buffalo"
-    eland <- resample(terra::rast(ud_select_species[["Eland"]]), rst) * m
-    varnames(eland) <- "Eland"
-    elephant <- resample(terra::rast(ud_select_species[["Elephant"]]), rst) * m
-    varnames(elephant) <- "Elephant"
-    hart <- resample(terra::rast(ud_select_species[["Hartebeest"]]), rst) * m
-    varnames(hart) <- "Hartebeest"
-    impala <- resample(terra::rast(ud_select_species[["Impala"]]), rst) * m
-    varnames(impala) <- "Impala"
-    waterbuck <- resample(terra::rast(ud_select_species[["Waterbuck"]]), rst) *
-      m
-    varnames(waterbuck) <- "Waterbuck"
-    zebra <- resample(terra::rast(ud_select_species[["Zebra"]]), rst) * m
-    varnames(zebra) <- "Zebra"
-
-    animals <- c(gnu, buffalo, eland, elephant, hart, impala, waterbuck, zebra)
-    names(animals) <- c(
-      "blue_wildebeest",
-      "buffalo",
-      "eland",
-      "elephant",
-      "hartebeest",
-      "impala",
-      "waterbuck",
-      "zebra"
-    )
-  }
-
   # Resample rasters to the same resolution:
   {
     cat("Resampling rasters...", "\n")
@@ -291,7 +204,6 @@ graphics.off()
     slope <- resample(x = slope, y = rst)
     soil <- resample(x = soil_rst, y = rst)
     water_dist <- resample(x = water_dist, y = rst)
-    animals <- resample(x = animals, y = rst)
 
     rm(
       rst,
@@ -330,7 +242,6 @@ graphics.off()
     slope <- mask(crop(slope, gnp), gnp)
     soil <- mask(crop(soil, gnp), gnp)
     water_dist <- mask(crop(water_dist, gnp), gnp)
-    animals <- mask(crop(animals, gnp), gnp)
 
     stack <- c(
       ndvi,
@@ -342,34 +253,19 @@ graphics.off()
       elev,
       slope,
       soil,
-      water_dist,
-      animals
+      water_dist
     )
   }
 
   # Remove unnecessary objects
   rm(
-    animals,
-    buffalo,
-    eland,
-    elephant,
     elev,
     evi,
-    gnu,
-    hart,
-    impala,
     lai,
-    m,
     pnt,
     pnv,
     slope,
-    soil,
-    spdf,
-    ud_select_species,
-    waterbuck,
-    zebra,
-    animal_counts,
-    gnp_species
+    soil
   )
   cat("Done!!!")
 }
@@ -457,9 +353,16 @@ for (i in 1:nrow(hyper_grid)) {
   # Convert logit to probability:
   cand_points$p_true <- plogis(logit_p)
 
-  # Simulate presences based on probability:
+  # Bernoulli trial to simulate presence/absence based on the true probability:
+  cand_points$presence <- rbinom(
+    n = nrow(cand_points),
+    size = 1,
+    prob = cand_points$p_true
+  )
+
+  # Create a data frame of presences
   presences <- cand_points |>
-    filter(p_true > 0.5)
+    dplyr::filter(presence == 1)
 
   # --------------------------------------------------------------------------------------------------- #
 
@@ -469,7 +372,6 @@ for (i in 1:nrow(hyper_grid)) {
   if (nrow(presences) >= 1000 && nrow(presences) <= 10000) {
     # Generate absence points:
     {
-      set.seed(3791)
       absence_points <- st_sample(
         gnp,
         size = nrow(presences),
@@ -502,7 +404,7 @@ for (i in 1:nrow(hyper_grid)) {
   cat("Creating dataframe ", i, " of ", dim(hyper_grid)[1], "\n")
 }
 
-# Remove unnessary objects
+# Remove unnecessary objects
 rm(
   a_ndvi,
   a_ptc,
@@ -570,6 +472,9 @@ big_list <- readRDS("./Data/simple_data_frames.rds")
 
 # CREATE TRUE PROBABILITY MAP: ####
 # ============================ #
+
+# For testing purposes, create a raster of the true probability for one of
+# the data frames using the equation and the covariate rasters:
 
 prob_stack <- c(ndvi, ptc, water_dist)
 
