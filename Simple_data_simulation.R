@@ -255,13 +255,19 @@ graphics.off()
       soil,
       water_dist
     )
+
+    # Calculate the mean and standard deviation for the rasters (for scaling the coefficients)
+    cat("Calculating raster statistics...", "\n")
+    ndvi_stats <- global(ndvi, fun = c("mean", "sd"), na.rm = TRUE)
+    water_stats <- global(water_dist, fun = c("mean", "sd"), na.rm = TRUE)
+    ptc_stats <- global(ptc, fun = c("mean", "sd"), na.rm = TRUE)
+    lai_stats <- global(lai, fun = c("mean", "sd"), na.rm = TRUE)
   }
 
   # Remove unnecessary objects
   rm(
     elev,
     evi,
-    lai,
     pnt,
     pnv,
     slope,
@@ -278,10 +284,11 @@ graphics.off()
 
 # Create a hyper grid with all of the parameters for the simulated data frames
 hyper_grid <- expand.grid(
-  beta_ndvi = seq(from = -2.5, to = 2.5, by = 2.5),
-  beta_water = seq(from = -2.5, to = 2.5, by = 2.5),
-  beta_ptc = seq(from = -2.5, to = 2.5, by = 2.5),
-  alpha = seq(from = -5, to = 5, by = 2.5)
+  beta_ndvi = setdiff(seq(from = -2, to = 2, by = 0.5), 0),
+  beta_water = setdiff(seq(from = -2, to = 2, by = 0.5), 0),
+  beta_ptc = setdiff(seq(from = -2, to = 2, by = 0.5), 0),
+  beta_lai = setdiff(seq(from = -2, to = 2, by = 0.5), 0),
+  alpha = setdiff(seq(from = -2, to = 2, by = 0.5), 0)
 )
 
 # Create an empty list for all of the data frames to go into
@@ -307,126 +314,150 @@ data_frames <- list()
   # Extract covariate values at candidate points:
   cand_points$NDVI <- terra::extract(ndvi, coords)[, 1]
   cand_points$ptc <- terra::extract(ptc, coords)[, 1]
-  # cand_points$pnt <- terra::extract(pnt, coords)[, 1]
+  cand_points$lai <- terra::extract(lai, coords)[, 1]
   cand_points$dist_water <- terra::extract(water_dist, coords)[, 1]
 }
 
-set.seed(3791)
-
-# Simulation For Loop:
-for (i in 1:nrow(hyper_grid)) {
-  # CALCULATE THE UNSCALED COEFFICIENTS:
-
-  # NDVI coefficient:
+system.time({
   {
-    ndvi_stats <- global(ndvi, fun = c("mean", "sd"), na.rm = TRUE)
-    b_ndvi <- hyper_grid[i, 1] / ndvi_stats[1, 2] # Beta for scaled NDVI = 0.5
-    a_ndvi <- hyper_grid[i, 4] -
-      hyper_grid[i, 1] * (ndvi_stats[1, 1] / ndvi_stats[1, 2]) # Alpha for scaled NDVI = -0.1
-  }
+    set.seed(3791)
 
-  # Distance to water coefficient:
-  {
-    water_stats <- global(water_dist, fun = c("mean", "sd"), na.rm = TRUE)
-    b_water <- hyper_grid[i, 2] / water_stats[1, 2]
-    a_water <- hyper_grid[i, 4] -
-      hyper_grid[i, 2] * (water_stats[1, 1] / water_stats[1, 2])
-  }
+    # Pre-extract stats columns and convert to vectors for faster access:
+    ndvi_mean <- ndvi_stats[1, 1]
+    ndvi_sd <- ndvi_stats[1, 2]
 
-  # Percent tree cover coefficient:
-  {
-    ptc_stats <- global(ptc, fun = c("mean", "sd"), na.rm = TRUE)
-    b_ptc <- hyper_grid[i, 3] / ptc_stats[1, 2]
-    a_ptc <- hyper_grid[i, 4] -
-      hyper_grid[i, 3] * (ptc_stats[1, 1] / ptc_stats[1, 2])
-  }
+    water_mean <- water_stats[1, 1]
+    water_sd <- water_stats[1, 2]
 
-  # --------------------------------------------------------------------------------------------------- #
+    ptc_mean <- ptc_stats[1, 1]
+    ptc_sd <- ptc_stats[1, 2]
 
-  # DEFINE THE EQUATION, CALCULATE PROBABILITIES, AND SIMULATE PRESENCE:
+    lai_mean <- lai_stats[1, 1]
+    lai_sd <- lai_stats[1, 2]
 
-  # The Equation
-  logit_p <- (hyper_grid[i, 4] + b_ndvi * cand_points$NDVI) +
-    (b_water * cand_points$dist_water) +
-    (b_ptc * cand_points$ptc)
+    # Convert hyper_grid to vectors for faster indexing:
+    beta_ndvi_vec <- hyper_grid[, 1]
+    beta_water_vec <- hyper_grid[, 2]
+    beta_ptc_vec <- hyper_grid[, 3]
+    beta_lai_vec <- hyper_grid[, 4]
+    alpha_vec <- hyper_grid[, 5]
 
-  # Convert logit to probability:
-  cand_points$p_true <- plogis(logit_p)
+    # Extract candidate points data as vectors for faster computation:
+    cand_ndvi <- cand_points$NDVI
+    cand_water <- cand_points$dist_water
+    cand_ptc <- cand_points$ptc
+    cand_lai <- cand_points$lai
+    cand_geom <- cand_points$geometry
+    n_cand <- length(cand_geom)
 
-  # Bernoulli trial to simulate presence/absence based on the true probability:
-  cand_points$presence <- rbinom(
-    n = nrow(cand_points),
-    size = 1,
-    prob = cand_points$p_true
-  )
+    # Simulation For Loop (vectorized):
+    for (i in 1:nrow(hyper_grid)) {
+      # CALCULATE SCALED COEFFICIENTS (vectorized):
+      b_ndvi <- beta_ndvi_vec[i] / ndvi_sd
+      b_water <- beta_water_vec[i] / water_sd
+      b_ptc <- beta_ptc_vec[i] / ptc_sd
+      b_lai <- beta_lai_vec[i] / lai_sd # Using LAI stats for scaling LAI
 
-  # Create a data frame of presences
-  presences <- cand_points |>
-    dplyr::filter(presence == 1)
+      # DEFINE THE EQUATION AND CALCULATE PROBABILITIES:
+      logit_p <- alpha_vec[i] +
+        b_ndvi * cand_ndvi +
+        b_water * cand_water +
+        b_ptc * cand_ptc +
+        b_lai * cand_lai
 
-  # --------------------------------------------------------------------------------------------------- #
+      # Convert logit to probability:
+      p_true <- plogis(logit_p)
 
-  # GENERATE ABSENCE POINTS & COMBINE DATA SETS:
+      # Bernoulli trial to simulate presence/absence:
+      presence <- rbinom(n = n_cand, size = 1, prob = p_true)
 
-  # Create a `if else` statement so that if presences are > 1000 & <10 000 its defined as "Failed"
-  if (nrow(presences) >= 1000 && nrow(presences) <= 10000) {
-    # Generate absence points:
-    {
-      absence_points <- st_sample(
-        gnp,
-        size = nrow(presences),
-        type = "random"
-      )
+      # Get indices of presences (faster than filtering):
+      presence_idx <- which(presence == 1)
+      n_presences <- length(presence_idx)
+
+      # --------------------------------------------------------------------------------------------------- #
+
+      # GENERATE ABSENCE POINTS & COMBINE DATA SETS:
+
+      # Only proceed if presences are between 1000 and 10000:
+      if (n_presences >= 1000 && n_presences <= 10000) {
+        # Extract presence geometries and create sf object:
+        presences_geom <- cand_geom[presence_idx]
+        presences_df <- st_sf(geometry = presences_geom, presence = 1)
+
+        # Generate absence points:
+        absence_points <- st_sample(gnp, size = n_presences, type = "random")
+        absence_df <- st_sf(geometry = absence_points, presence = 0)
+
+        # Combine presences and absences:
+        sim_data <- rbind(presences_df, absence_df)
+
+        data_frames[[i]] <- list(
+          df = sim_data,
+          equation = hyper_grid[i, ]
+        )
+      } else {
+        data_frames[[i]] <- "Failed"
+      }
+
+      # Keep track of Loop process
+      if (i %% 100 == 0) {
+        cat("Creating dataframe ", i, " of ", nrow(hyper_grid), "\n")
+      }
     }
 
-    absence_points <- st_sf(geometry = absence_points)
-
-    # Add new variable, presence
-    absence_points$presence <- 0
-    presences <- presences |>
-      mutate(presence = 1) |>
-      dplyr::select(c("geometry", "presence")) # keep only presence and geometry to add the two data frames
-
-    # Combine the absences and presences
-    sim_data <- rbind(presences, absence_points)
-
-    data_frames[[i]] <- list(
-      df = sim_data,
-      equation = hyper_grid[i, ]
+    # Remove unnecessary objects
+    rm(
+      cand_points,
+      coords,
+      i,
+      presence_idx,
+      presence,
+      p_true,
+      logit_p,
+      b_ndvi,
+      b_water,
+      b_ptc,
+      absence_df,
+      presences_df,
+      presences_geom,
+      sim_data,
+      absence_points,
+      cand_ndvi,
+      cand_water,
+      cand_ptc,
+      cand_geom,
+      n_cand,
+      n_presences,
+      ndvi_mean,
+      ndvi_sd,
+      water_mean,
+      water_sd,
+      ptc_mean,
+      ptc_sd,
+      beta_ndvi_vec,
+      beta_water_vec,
+      beta_ptc_vec,
+      alpha_vec,
+      hyper_grid,
+      gnp,
+      ndvi_stats,
+      ptc_stats,
+      water_stats,
+      ndvi,
+      ptc,
+      water_dist,
+      b_lai,
+      lai_stats,
+      beta_lai_vec,
+      cand_lai,
+      lai,
+      lai_mean,
+      lai_sd
     )
-  } else {
-    data_frames[[i]] <- "Failed"
   }
+})
 
-  # --------------------------------------------------------------------------------------------------- #
-
-  # Keep track of Loop process
-  cat("Creating dataframe ", i, " of ", dim(hyper_grid)[1], "\n")
-}
-
-# Remove unnecessary objects
-rm(
-  a_ndvi,
-  a_ptc,
-  a_water,
-  b_ndvi,
-  b_ptc,
-  b_water,
-  i,
-  logit_p,
-  absence_points,
-  cand_points,
-  coords,
-  gnp,
-  ndvi_stats,
-  presences,
-  ptc_stats,
-  sim_data,
-  water_stats,
-  ndvi,
-  ptc,
-  water_dist
-)
 
 # --------------------------------------------------------------------------------------------------- #
 # --------------------------------------------------------------------------------------------------- #
@@ -440,32 +471,28 @@ data_frames <- keep(
   ~ is.list(.x)
 )
 
-# Add a unique ID and extract all satellite variables for each data frame:
+# Add a unique ID and extract all satellite variables for each data frame (vectorized):
 for (i in 1:length(data_frames)) {
   # Add unique ID:
   data_frames[[i]]$mod_id <- paste0("mod_", i)
 
-  # Extract satellite imagery data:
-  coords <- terra::vect(st_coordinates(data_frames[[i]]$df)) # Get coordinates
-  vals <- terra::extract(stack, coords, df = T) # Extract the values into a new data frame
-  data_frames[[i]]$df <- cbind(data_frames[[i]]$df, vals[, -1]) # Combine with data
+  # Extract satellite imagery data (vectorized):
+  coords <- st_coordinates(data_frames[[i]]$df)
+  vals <- terra::extract(stack, terra::vect(coords), df = TRUE)
+  data_frames[[i]]$df <- cbind(data_frames[[i]]$df, vals[, -1])
 
   # Keep track of the loop's progress
-  cat("Extracting for data frame", i, "of", length(data_frames), "\n")
+  if (i %% 10 == 0) {
+    cat("Extracting for data frame", i, "of", length(data_frames), "\n")
+  }
 }
 
-rm(hyper_grid, vals, coords, i, stack)
+rm(coords, i, stack, vals)
+# rm(hyper_grid, vals, coords, i, stack)
 
 # Save the lists to avoid re-running the code:
 saveRDS(data_frames, file = "./Data/simple_data_frames.rds")
 
-big_list <- readRDS("./Data/simple_data_frames.rds")
-
-
-# --------------------------------------------------------------------------------------------------- #
-# --------------------------------------------------------------------------------------------------- #
-
-# RUN MODELS FOR EACH DATA FRAME IN
 
 # --------------------------------------------------------------------------------------------------- #
 # --------------------------------------------------------------------------------------------------- #
@@ -476,11 +503,14 @@ big_list <- readRDS("./Data/simple_data_frames.rds")
 # For testing purposes, create a raster of the true probability for one of
 # the data frames using the equation and the covariate rasters:
 
+# ! The following code is wrong
+
 prob_stack <- c(ndvi, ptc, water_dist)
 
 i <- 120
 
 # Create a raster with based off of the equation:
+# ! This code is making use of scaled coefficients
 logit_rst <- (data_frames[[i]]$equation$alpha +
   (data_frames[[i]]$equation$beta_ndvi * prob_stack$ndvi) +
   (data_frames[[i]]$equation$beta_water * prob_stack$water_dist) +
@@ -490,3 +520,10 @@ logit_rst <- (data_frames[[i]]$equation$alpha +
 p_true_rst <- 1 / (1 + exp(-logit_rst))
 plot(p_true_rst, col = inferno(150))
 plot(logit_rst, col = inferno(150))
+
+
+test <- data.frame(
+  id = c(1, 3, 4, 5, 6, 7, 8),
+  x = c(1, 2, 3, 4, 5, 6, 7),
+  g = c("a", "b", "c", "d", "e", "f", "g")
+)
