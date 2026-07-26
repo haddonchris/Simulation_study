@@ -1,6 +1,9 @@
 rm(list = ls())
 graphics.off()
 
+# --------------------------------------------------------------------------------------------------- #
+# --------------------------------------------------------------------------------------------------- #
+
 # LOAD LIBRARIES: ####
 # =============== #
 
@@ -321,6 +324,12 @@ data_frames <- list()
 system.time({
   {
     set.seed(3791)
+    # Randomise the hyper grid and sample 1,000,000 rows for the simulation:
+    hyper_grid <- hyper_grid[sample(nrow(hyper_grid), nrow(hyper_grid)), ]
+
+    # Create an empty list for all of the data frames to go into
+    data_frames <- list()
+    kept <- 0
 
     # Pre-extract stats columns and convert to vectors for faster access:
     ndvi_mean <- ndvi_stats[1, 1]
@@ -381,6 +390,11 @@ system.time({
 
       # Only proceed if presences are between 1000 and 10000:
       if (n_presences >= 1000 && n_presences <= 10000) {
+        # Keep track of how many data frames have been created
+        kept <- kept + 1
+
+        cat("Creating dataframe", kept, "of 200", "\n") # Print the progress of the data frame creation
+
         # Extract presence geometries and create sf object:
         presences_geom <- cand_geom[presence_idx]
         presences_df <- st_sf(geometry = presences_geom, presence = 1)
@@ -392,18 +406,14 @@ system.time({
         # Combine presences and absences:
         sim_data <- rbind(presences_df, absence_df)
 
-        data_frames[[i]] <- list(
+        data_frames[[kept]] <- list(
           df = sim_data,
           equation = hyper_grid[i, ]
         )
-      } else {
-        data_frames[[i]] <- "Failed"
       }
 
       # Keep track of Loop process
-      if (i %% 100 == 0) {
-        cat("Creating dataframe ", i, " of ", nrow(hyper_grid), "\n")
-      }
+      if (kept == 200) break
     }
 
     # Remove unnecessary objects
@@ -453,7 +463,8 @@ system.time({
       cand_lai,
       lai,
       lai_mean,
-      lai_sd
+      lai_sd,
+      kept
     )
   }
 })
@@ -464,12 +475,6 @@ system.time({
 
 # FILTER THE LISTS AND EDIT: ####
 # ========================== #
-
-# Keep only the data frames that have data:
-data_frames <- keep(
-  data_frames,
-  ~ is.list(.x)
-)
 
 # Add a unique ID and extract all satellite variables for each data frame (vectorized):
 for (i in 1:length(data_frames)) {
@@ -488,24 +493,6 @@ for (i in 1:length(data_frames)) {
 }
 
 rm(coords, i, stack, vals)
-# rm(hyper_grid, vals, coords, i, stack)
 
 # Save the lists to avoid re-running the code:
-
-{
-  set.seed(3791)
-  sdf2 <- data_frames[sample(length(data_frames), 200)]
-  saveRDS(sdf2, "./Data/Simple_data_200_data_frames.rds")
-  rm(sdf2)
-}
-
-#
-{
-  set.seed(3791)
-  sdf3 <- data_frames[sample(length(data_frames), 50)]
-  saveRDS(sdf3, "./Data/Simple_50_data_frames_for_testing.rds")
-  rm(sdf3)
-}
-
-
-saveRDS(data_frames, file = "./Data/simple_data_frames.rds")
+saveRDS(data_frames, "./Data/Final_data/Simple_data_200_data_frames.rds")

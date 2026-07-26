@@ -284,18 +284,15 @@ graphics.off()
 
 # Create a hyper grid with all of the parameters for the simulated data frames
 hyper_grid <- expand.grid(
-  beta_1 = setdiff(seq(from = -1.5, to = 1.5, by = 0.5), 0),
-  beta_2 = setdiff(seq(from = -1.5, to = 1.5, by = 0.5), 0),
-  beta_3 = setdiff(seq(from = -1.5, to = 1.5, by = 0.5), 0),
-  beta_4 = setdiff(seq(from = -1.5, to = 1.5, by = 0.5), 0),
-  beta_5 = setdiff(seq(from = -1.5, to = 1.5, by = 0.5), 0),
-  beta_6 = setdiff(seq(from = -1.5, to = 1.5, by = 0.5), 0),
+  beta_1 = setdiff(seq(from = -2, to = 2, by = 0.5), 0),
+  beta_2 = setdiff(seq(from = -2, to = 2, by = 0.5), 0),
+  beta_3 = setdiff(seq(from = -2, to = 2, by = 0.5), 0),
+  beta_4 = setdiff(seq(from = -2, to = 2, by = 0.5), 0),
+  beta_5 = setdiff(seq(from = -2, to = 2, by = 0.5), 0),
+  beta_6 = setdiff(seq(from = -2, to = 2, by = 0.5), 0),
   c = c(0.5, 1, 2.5),
-  alpha = setdiff(seq(from = -1.5, to = 1.5, by = 0.5), 0)
+  alpha = setdiff(seq(from = -2, to = 2, by = 0.5), 0)
 )
-
-# Create an empty list for all of the data frames to go into
-data_frames <- list()
 
 # Create the candidate points for the simulation:
 {
@@ -321,11 +318,16 @@ data_frames <- list()
   cand_points$dist_water <- terra::extract(water_dist, coords)[, 1]
 }
 
-rm(lai, ndvi, ptc, stack, water_dist)
-
 system.time({
   {
     set.seed(3791)
+
+    # Randomise the hyper grid and sample 1,000,000 rows for the simulation:
+    hyper_grid <- hyper_grid[sample(nrow(hyper_grid), nrow(hyper_grid)), ]
+
+    # Create an empty list for all of the data frames to go into
+    data_frames <- list()
+    kept <- 0
 
     # Pre-extract stats columns and convert to vectors for faster access:
     ndvi_mean <- ndvi_stats[1, 1]
@@ -368,9 +370,6 @@ system.time({
       b_5 <- beta_5_vec[i] / ndvi_sd
       b_6 <- beta_6_vec[i] / ndvi_sd
 
-      # b_3 <- beta_3_vec[i] / ptc_sd
-      # b_4 <- beta_4_vec[i] / lai_sd # Using LAI stats for scaling LAI
-
       # DEFINE THE EQUATION AND CALCULATE PROBABILITIES:
       logit_p <- alpha_vec[i] +
         (b_1 * cand_lai) +
@@ -394,6 +393,12 @@ system.time({
 
       # Only proceed if presences are between 1000 and 10 000:
       if (n_presences >= 1000 && n_presences <= 10000) {
+        # Keep track of how many data frames have been created
+        kept <- kept + 1
+
+        # Print the progress of the data frame creation
+        cat("Creating dataframe", kept, "of 200", "\n")
+
         # Extract presence geometries and create sf object:
         presences_geom <- cand_geom[presence_idx]
         presences_df <- st_sf(geometry = presences_geom, presence = 1)
@@ -405,18 +410,14 @@ system.time({
         # Combine presences and absences:
         sim_data <- rbind(presences_df, absence_df)
 
-        data_frames[[i]] <- list(
+        data_frames[[kept]] <- list(
           df = sim_data,
           equation = hyper_grid[i, ]
         )
-      } else {
-        data_frames[[i]] <- "Failed"
       }
 
       # Keep track of Loop process
-      if (i %% 100 == 0) {
-        cat("Creating dataframe ", i, " of ", nrow(hyper_grid), "\n")
-      }
+      if (kept == 200) break
     }
 
     # Remove unnecessary objects
@@ -441,9 +442,6 @@ system.time({
       presence,
       p_true,
       logit_p,
-      # b_ndvi,
-      # b_water,
-      # b_ptc,
       absence_df,
       presences_df,
       presences_geom,
@@ -461,65 +459,51 @@ system.time({
       water_sd,
       ptc_mean,
       ptc_sd,
-      # beta_ndvi_vec,
-      # beta_water_vec,
-      # beta_ptc_vec,
       alpha_vec,
       hyper_grid,
-      # gnp,
-      # ndvi_stats,
-      # ptc_stats,
-      # water_stats,
-      # ndvi,
-      # ptc,
-      # water_dist,
-      # b_lai,
-      # lai_stats,
-      # beta_lai_vec,
+      gnp,
+      ndvi_stats,
+      ptc_stats,
+      water_stats,
+      ndvi,
+      ptc,
+      water_dist,
+      lai_stats,
       cand_lai,
-      # lai,
+      lai,
       lai_mean,
-      lai_sd
+      lai_sd,
+      kept
     )
-
-    # --------------------------------------------------------------------------------------------------- #
-
-    # FILTER THE LISTS AND EDIT:
-
-    # Keep only the data frames that have data:
-    data_frames <- keep(
-      data_frames,
-      ~ is.list(.x)
-    )
-
-    # Add a unique ID and extract all satellite variables for each data frame (vectorized):
-    for (i in 1:length(data_frames)) {
-      # Add unique ID:
-      data_frames[[i]]$mod_id <- paste0("mod_", i)
-
-      if (i %% 1000 == 0) {
-        cat("Extracting for data frame", i, "of", length(data_frames), "\n")
-      }
-    }
-
-    # --------------------------------------------------------------------------------------------------- #
-
-    # SAMPLE THE DATA FRAMES AND SAVE TO AVOID RE-RUNNING THE CODE:
-
-    {
-      set.seed(3791)
-      sdf1 <- data_frames[sample(length(data_frames), 1000)]
-      saveRDS(sdf1, "./Data/Nonlinear_1000_data_frames.rds")
-      rm(sdf1)
-    }
-
-    {
-      set.seed(3791)
-      sdf2 <- data_frames[sample(length(data_frames), 200)]
-      saveRDS(sdf2, "./Data/Nonlinear_200_data_frames.rds")
-      rm(sdf2)
-    }
-
-    rm(data_frames)
   }
 })
+
+# --------------------------------------------------------------------------------------------------- #
+# --------------------------------------------------------------------------------------------------- #
+
+# FILTER THE LISTS AND EDIT: ####
+# ========================== #
+
+# Add a unique ID and extract all satellite variables for each data frame (vectorized):
+for (i in 1:length(data_frames)) {
+  # Add unique ID:
+  data_frames[[i]]$mod_id <- paste0("mod_", i)
+
+  # Extract satellite imagery data (vectorized):
+  coords <- st_coordinates(data_frames[[i]]$df)
+  vals <- terra::extract(stack, terra::vect(coords), df = TRUE)
+  data_frames[[i]]$df <- cbind(data_frames[[i]]$df, vals[, -1])
+
+  if (i %% 10 == 0) {
+    cat("Extracting for data frame", i, "of", length(data_frames), "\n")
+  }
+}
+
+# Remove unnecessary objects:
+rm(coords, i, stack, vals)
+
+# Save the lists to avoid re-running the code:
+saveRDS(
+  data_frames,
+  "./Data/Final_data/Non_linear_data_200_data_frames.rds"
+)
