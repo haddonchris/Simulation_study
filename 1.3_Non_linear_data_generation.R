@@ -284,11 +284,14 @@ graphics.off()
 
 # Create a hyper grid with all of the parameters for the simulated data frames
 hyper_grid <- expand.grid(
-  beta_ndvi = setdiff(seq(from = -2, to = 2, by = 0.5), 0),
-  beta_water = setdiff(seq(from = -2, to = 2, by = 0.5), 0),
-  beta_ptc = setdiff(seq(from = -2, to = 2, by = 0.5), 0),
-  beta_lai = setdiff(seq(from = -2, to = 2, by = 0.5), 0),
-  alpha = setdiff(seq(from = -2, to = 2, by = 0.5), 0)
+  beta_1 = setdiff(seq(from = -1.5, to = 1.5, by = 0.5), 0),
+  beta_2 = setdiff(seq(from = -1.5, to = 1.5, by = 0.5), 0),
+  beta_3 = setdiff(seq(from = -1.5, to = 1.5, by = 0.5), 0),
+  beta_4 = setdiff(seq(from = -1.5, to = 1.5, by = 0.5), 0),
+  beta_5 = setdiff(seq(from = -1.5, to = 1.5, by = 0.5), 0),
+  beta_6 = setdiff(seq(from = -1.5, to = 1.5, by = 0.5), 0),
+  c = c(0.5, 1, 2.5),
+  alpha = setdiff(seq(from = -1.5, to = 1.5, by = 0.5), 0)
 )
 
 # Create an empty list for all of the data frames to go into
@@ -318,6 +321,8 @@ data_frames <- list()
   cand_points$dist_water <- terra::extract(water_dist, coords)[, 1]
 }
 
+rm(lai, ndvi, ptc, stack, water_dist)
+
 system.time({
   {
     set.seed(3791)
@@ -336,11 +341,14 @@ system.time({
     lai_sd <- lai_stats[1, 2]
 
     # Convert hyper_grid to vectors for faster indexing:
-    beta_ndvi_vec <- hyper_grid[, 1]
-    beta_water_vec <- hyper_grid[, 2]
-    beta_ptc_vec <- hyper_grid[, 3]
-    beta_lai_vec <- hyper_grid[, 4]
-    alpha_vec <- hyper_grid[, 5]
+    beta_1_vec <- hyper_grid[, 1]
+    beta_2_vec <- hyper_grid[, 2]
+    beta_3_vec <- hyper_grid[, 3]
+    beta_4_vec <- hyper_grid[, 4]
+    beta_5_vec <- hyper_grid[, 5]
+    beta_6_vec <- hyper_grid[, 6]
+    c_vec <- hyper_grid[, 7]
+    alpha_vec <- hyper_grid[, 8]
 
     # Extract candidate points data as vectors for faster computation:
     cand_ndvi <- cand_points$NDVI
@@ -353,18 +361,23 @@ system.time({
     # Simulation For Loop (vectorized):
     for (i in 1:nrow(hyper_grid)) {
       # CALCULATE SCALED COEFFICIENTS (vectorized):
-      b_ndvi <- beta_ndvi_vec[i] / ndvi_sd
-      b_water <- beta_water_vec[i] / water_sd
-      b_ptc <- beta_ptc_vec[i] / ptc_sd
-      b_lai <- beta_lai_vec[i] / lai_sd # Using LAI stats for scaling LAI
+      b_1 <- beta_1_vec[i] / lai_sd
+      b_2 <- beta_2_vec[i] / lai_sd
+      b_3 <- beta_3_vec[i] / water_sd
+      b_4 <- beta_4_vec[i] / ptc_sd
+      b_5 <- beta_5_vec[i] / ndvi_sd
+      b_6 <- beta_6_vec[i] / ndvi_sd
+
+      # b_3 <- beta_3_vec[i] / ptc_sd
+      # b_4 <- beta_4_vec[i] / lai_sd # Using LAI stats for scaling LAI
 
       # DEFINE THE EQUATION AND CALCULATE PROBABILITIES:
       logit_p <- alpha_vec[i] +
-        b_ndvi * cand_ndvi +
-        b_water * cand_water +
-        b_ptc * cand_ptc +
-        b_lai * cand_lai
-
+        (b_1 * cand_lai) +
+        (b_2 * (cand_lai^2)) +
+        (b_3 * log(cand_water)) +
+        ((b_4 * cand_ptc) / (c_vec[i] + cand_ptc)) +
+        (b_5 * exp(b_6 * cand_ndvi))
       # Convert logit to probability:
       p_true <- plogis(logit_p)
 
@@ -379,7 +392,7 @@ system.time({
 
       # GENERATE ABSENCE POINTS & COMBINE DATA SETS:
 
-      # Only proceed if presences are between 1000 and 10000:
+      # Only proceed if presences are between 1000 and 10 000:
       if (n_presences >= 1000 && n_presences <= 10000) {
         # Extract presence geometries and create sf object:
         presences_geom <- cand_geom[presence_idx]
@@ -408,6 +421,19 @@ system.time({
 
     # Remove unnecessary objects
     rm(
+      b_1,
+      b_2,
+      b_3,
+      b_4,
+      b_5,
+      b_6,
+      beta_1_vec,
+      beta_2_vec,
+      beta_3_vec,
+      beta_4_vec,
+      beta_5_vec,
+      beta_6_vec,
+      c_vec,
       cand_points,
       coords,
       i,
@@ -415,9 +441,9 @@ system.time({
       presence,
       p_true,
       logit_p,
-      b_ndvi,
-      b_water,
-      b_ptc,
+      # b_ndvi,
+      # b_water,
+      # b_ptc,
       absence_df,
       presences_df,
       presences_geom,
@@ -435,95 +461,65 @@ system.time({
       water_sd,
       ptc_mean,
       ptc_sd,
-      beta_ndvi_vec,
-      beta_water_vec,
-      beta_ptc_vec,
+      # beta_ndvi_vec,
+      # beta_water_vec,
+      # beta_ptc_vec,
       alpha_vec,
       hyper_grid,
-      gnp,
-      ndvi_stats,
-      ptc_stats,
-      water_stats,
-      ndvi,
-      ptc,
-      water_dist,
-      b_lai,
-      lai_stats,
-      beta_lai_vec,
+      # gnp,
+      # ndvi_stats,
+      # ptc_stats,
+      # water_stats,
+      # ndvi,
+      # ptc,
+      # water_dist,
+      # b_lai,
+      # lai_stats,
+      # beta_lai_vec,
       cand_lai,
-      lai,
+      # lai,
       lai_mean,
       lai_sd
     )
+
+    # --------------------------------------------------------------------------------------------------- #
+
+    # FILTER THE LISTS AND EDIT:
+
+    # Keep only the data frames that have data:
+    data_frames <- keep(
+      data_frames,
+      ~ is.list(.x)
+    )
+
+    # Add a unique ID and extract all satellite variables for each data frame (vectorized):
+    for (i in 1:length(data_frames)) {
+      # Add unique ID:
+      data_frames[[i]]$mod_id <- paste0("mod_", i)
+
+      if (i %% 1000 == 0) {
+        cat("Extracting for data frame", i, "of", length(data_frames), "\n")
+      }
+    }
+
+    # --------------------------------------------------------------------------------------------------- #
+
+    # SAMPLE THE DATA FRAMES AND SAVE TO AVOID RE-RUNNING THE CODE:
+
+    {
+      set.seed(3791)
+      sdf1 <- data_frames[sample(length(data_frames), 1000)]
+      saveRDS(sdf1, "./Data/Nonlinear_1000_data_frames.rds")
+      rm(sdf1)
+    }
+
+    {
+      set.seed(3791)
+      sdf2 <- data_frames[sample(length(data_frames), 200)]
+      saveRDS(sdf2, "./Data/Nonlinear_200_data_frames.rds")
+      rm(sdf2)
+    }
+
+    rm(data_frames)
   }
 })
-
-
-# --------------------------------------------------------------------------------------------------- #
-# --------------------------------------------------------------------------------------------------- #
-
-# FILTER THE LISTS AND EDIT: ####
-# ========================== #
-
-# Keep only the data frames that have data:
-data_frames <- keep(
-  data_frames,
-  ~ is.list(.x)
-)
-
-# Add a unique ID and extract all satellite variables for each data frame (vectorized):
-for (i in 1:length(data_frames)) {
-  # Add unique ID:
-  data_frames[[i]]$mod_id <- paste0("mod_", i)
-
-  # Extract satellite imagery data (vectorized):
-  coords <- st_coordinates(data_frames[[i]]$df)
-  vals <- terra::extract(stack, terra::vect(coords), df = TRUE)
-  data_frames[[i]]$df <- cbind(data_frames[[i]]$df, vals[, -1])
-
-  # Keep track of the loop's progress
-  if (i %% 10 == 0) {
-    cat("Extracting for data frame", i, "of", length(data_frames), "\n")
-  }
-}
-
-rm(coords, i, stack, vals)
-# rm(hyper_grid, vals, coords, i, stack)
-
-# Save the lists to avoid re-running the code:
-saveRDS(data_frames, file = "./Data/simple_data_frames.rds")
-
-
-# --------------------------------------------------------------------------------------------------- #
-# --------------------------------------------------------------------------------------------------- #
-
-# CREATE TRUE PROBABILITY MAP: ####
-# ============================ #
-
-# For testing purposes, create a raster of the true probability for one of
-# the data frames using the equation and the covariate rasters:
-
-# ! The following code is wrong
-
-prob_stack <- c(ndvi, ptc, water_dist)
-
-i <- 120
-
-# Create a raster with based off of the equation:
-# ! This code is making use of scaled coefficients
-logit_rst <- (data_frames[[i]]$equation$alpha +
-  (data_frames[[i]]$equation$beta_ndvi * prob_stack$ndvi) +
-  (data_frames[[i]]$equation$beta_water * prob_stack$water_dist) +
-  (data_frames[[i]]$equation$beta_ptc * prob_stack$ptc))
-
-# Convert to probability
-p_true_rst <- 1 / (1 + exp(-logit_rst))
-plot(p_true_rst, col = inferno(150))
-plot(logit_rst, col = inferno(150))
-
-
-test <- data.frame(
-  id = c(1, 3, 4, 5, 6, 7, 8),
-  x = c(1, 2, 3, 4, 5, 6, 7),
-  g = c("a", "b", "c", "d", "e", "f", "g")
-)
