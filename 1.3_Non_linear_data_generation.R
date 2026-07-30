@@ -258,10 +258,18 @@ graphics.off()
 
     # Calculate the mean and standard deviation for the rasters (for scaling the coefficients)
     cat("Calculating raster statistics...", "\n")
-    ndvi_stats <- global(ndvi, fun = c("mean", "sd"), na.rm = TRUE)
-    water_stats <- global(water_dist, fun = c("mean", "sd"), na.rm = TRUE)
-    ptc_stats <- global(ptc, fun = c("mean", "sd"), na.rm = TRUE)
-    lai_stats <- global(lai, fun = c("mean", "sd"), na.rm = TRUE)
+    ndvi_stats <- global(
+      ndvi,
+      fun = c("mean", "sd", "min", "max"),
+      na.rm = TRUE
+    )
+    water_stats <- global(
+      water_dist,
+      fun = c("mean", "sd", "min", "max"),
+      na.rm = TRUE
+    )
+    ptc_stats <- global(ptc, fun = c("mean", "sd", "min", "max"), na.rm = TRUE)
+    lai_stats <- global(lai, fun = c("mean", "sd", "min", "max"), na.rm = TRUE)
   }
 
   # Remove unnecessary objects
@@ -283,16 +291,25 @@ graphics.off()
 # ======================== #
 
 # Create a hyper grid with all of the parameters for the simulated data frames
-hyper_grid <- expand.grid(
-  beta_1 = setdiff(seq(from = -2, to = 2, by = 0.5), 0),
-  beta_2 = setdiff(seq(from = -2, to = 2, by = 0.5), 0),
-  beta_3 = setdiff(seq(from = -2, to = 2, by = 0.5), 0),
-  beta_4 = setdiff(seq(from = -2, to = 2, by = 0.5), 0),
-  beta_5 = setdiff(seq(from = -2, to = 2, by = 0.5), 0),
-  beta_6 = setdiff(seq(from = -2, to = 2, by = 0.5), 0),
-  c = c(0.5, 1, 2.5),
-  alpha = setdiff(seq(from = -2, to = 2, by = 0.5), 0)
-)
+{
+  set.seed(3791)
+  hyper_grid <- data.frame(
+    beta_ndvi = runif(1000000, -2, 2),
+    beta_water = runif(1000000, -2, 2),
+    beta_ptc = runif(1000000, -2, 2),
+    beta_lai = runif(1000000, -2, 2),
+    alpha = runif(1000000, -2, 2),
+    mu_ndvi = runif(1000000, min = ndvi_stats$min, max = ndvi_stats$max),
+    sigma_ndvi = runif(1000000, 0.10, 0.50) * (ndvi_stats$max - ndvi_stats$min),
+    mu_lai = runif(1000000, min = lai_stats$min, max = lai_stats$max),
+    k_water = log(2) / runif(1000000, 100, 17000),
+    k_ptc = 6 / runif(1000000, 5, 50),
+    c_ptc = runif(1000000, ptc_stats$min, ptc_stats$max)
+  )
+}
+
+# Create an empty list for all of the data frames to go into
+data_frames <- list()
 
 # Create the candidate points for the simulation:
 {
@@ -317,6 +334,23 @@ hyper_grid <- expand.grid(
   cand_points$lai <- terra::extract(lai, coords)[, 1]
   cand_points$dist_water <- terra::extract(water_dist, coords)[, 1]
 }
+
+# Create a data frame to store diagnostics for each simulation:
+diagnostics <- data.frame(
+  sim = seq(1, nrow(hyper_grid)),
+  eta_between3 = NA_real_,
+  eta_sd = NA_real_,
+  p_mean = NA_real_,
+  p_sd = NA_real_,
+  p_min = NA_real_,
+  p_max = NA_real_,
+  p_low = NA_real_,
+  p_high = NA_real_,
+  n_pres = NA_integer_
+)
+
+# Create a vector to store the indices of the hyper_grid that were kept for the 200 data frames
+diag_index <- NA
 
 system.time({
   {
@@ -343,14 +377,17 @@ system.time({
     lai_sd <- lai_stats[1, 2]
 
     # Convert hyper_grid to vectors for faster indexing:
-    beta_1_vec <- hyper_grid[, 1]
-    beta_2_vec <- hyper_grid[, 2]
-    beta_3_vec <- hyper_grid[, 3]
-    beta_4_vec <- hyper_grid[, 4]
-    beta_5_vec <- hyper_grid[, 5]
-    beta_6_vec <- hyper_grid[, 6]
-    c_vec <- hyper_grid[, 7]
-    alpha_vec <- hyper_grid[, 8]
+    beta_ndvi_vec <- hyper_grid[, 1]
+    beta_water_vec <- hyper_grid[, 2]
+    beta_ptc_vec <- hyper_grid[, 3]
+    beta_lai_vec <- hyper_grid[, 4]
+    alpha_vec <- hyper_grid[, 5]
+    mu_ndvi_vec <- hyper_grid[, 6]
+    sigma_ndvi_vec <- hyper_grid[, 7]
+    mu_lai_vec <- hyper_grid[, 8]
+    k_water_vec <- hyper_grid[, 9]
+    k_ptc_vec <- hyper_grid[, 10]
+    c_ptc_vec <- hyper_grid[, 11]
 
     # Extract candidate points data as vectors for faster computation:
     cand_ndvi <- cand_points$NDVI
@@ -362,21 +399,34 @@ system.time({
 
     # Simulation For Loop (vectorized):
     for (i in 1:nrow(hyper_grid)) {
+      if (i %% 100 == 0) {
+        cat("Creating data frame", i, "of", nrow(hyper_grid), "\n")
+      }
+
       # CALCULATE SCALED COEFFICIENTS (vectorized):
-      b_1 <- beta_1_vec[i] / lai_sd
-      b_2 <- beta_2_vec[i] / lai_sd
-      b_3 <- beta_3_vec[i] / water_sd
-      b_4 <- beta_4_vec[i] / ptc_sd
-      b_5 <- beta_5_vec[i] / ndvi_sd
-      b_6 <- beta_6_vec[i] / ndvi_sd
+      b_ndvi <- beta_ndvi_vec[i] / ndvi_sd
+      b_water <- beta_water_vec[i] / water_sd
+      b_ptc <- beta_ptc_vec[i] / ptc_sd
+      b_lai <- beta_lai_vec[i] / lai_sd # Using LAI stats for scaling LAI
+
+      #
+      g_ndvi <- exp(
+        -(cand_ndvi - mu_ndvi_vec[i])^2 /
+          (2 * sigma_ndvi_vec[i]^2)
+      )
+      g_lai <- -((cand_lai - mu_lai_vec[i])^2)
+
+      g_water <- exp(-k_water_vec[i] * cand_water)
+
+      g_ptc <- 1 /
+        (1 + exp(-hyper_grid$k_ptc[i] * (cand_ptc - hyper_grid$c_ptc[i])))
 
       # DEFINE THE EQUATION AND CALCULATE PROBABILITIES:
       logit_p <- alpha_vec[i] +
-        (b_1 * cand_lai) +
-        (b_2 * (cand_lai^2)) +
-        (b_3 * log(cand_water)) +
-        ((b_4 * cand_ptc) / (c_vec[i] + cand_ptc)) +
-        (b_5 * exp(b_6 * cand_ndvi))
+        b_ndvi * g_ndvi +
+        b_water * g_water +
+        b_ptc * g_ptc +
+        b_lai * g_lai
       # Convert logit to probability:
       p_true <- plogis(logit_p)
 
@@ -387,6 +437,45 @@ system.time({
       presence_idx <- which(presence == 1)
       n_presences <- length(presence_idx)
 
+      diagnostics$n_pres[i] <- n_presences
+      diagnostics$eta_between3[i] <- mean(logit_p >= -3 & logit_p <= 3)
+      diagnostics$eta_sd[i] <- sd(logit_p)
+      diagnostics$p_mean[i] <- mean(p_true)
+      diagnostics$p_sd[i] <- sd(p_true)
+      diagnostics$p_min[i] <- min(p_true)
+      diagnostics$p_max[i] <- max(p_true)
+      diagnostics$p_low[i] <- mean(p_true < 0.05)
+      diagnostics$p_high[i] <- mean(p_true > 0.95)
+
+      # --------------------------------------------------------------------------------------------------- #
+
+      # FILTERING CONDITIONS:
+      # ===================== #
+
+      if (diagnostics$eta_between3[i] < 0.7) {
+        next # Skip to the next iteration if the condition is met
+      }
+
+      if (diagnostics$eta_sd[i] < 2.5 || diagnostics$eta_sd[i] > 7.5) {
+        next # Skip to the next iteration if the condition is met
+      }
+
+      if (diagnostics$p_mean[i] < 0.3 || diagnostics$p_mean[i] > 0.7) {
+        next # Skip to the next iteration if the condition is met
+      }
+
+      if (diagnostics$p_sd[i] < 0.2 || diagnostics$p_sd[i] > 0.4) {
+        next # Skip to the next iteration if the condition is met
+      }
+
+      if (diagnostics$p_min[i] > 0.15) {
+        next # Skip to the next iteration if the condition is met
+      }
+
+      if (diagnostics$p_max[i] < 0.85) {
+        next # Skip to the next iteration if the condition is met
+      }
+
       # --------------------------------------------------------------------------------------------------- #
 
       # GENERATE ABSENCE POINTS & COMBINE DATA SETS:
@@ -395,6 +484,7 @@ system.time({
       if (n_presences >= 1000 && n_presences <= 10000) {
         # Keep track of how many data frames have been created
         kept <- kept + 1
+        diag_index[kept] <- i
 
         # Print the progress of the data frame creation
         cat("Creating dataframe", kept, "of 200", "\n")
@@ -414,6 +504,48 @@ system.time({
           df = sim_data,
           equation = hyper_grid[i, ]
         )
+
+        # Create a raster of the true probabilities for visualization:
+        # ------------------------------------------------------------ #
+
+        f_ndvi <- exp(
+          -(stack$ndvi - hyper_grid$mu_ndvi[i])^2 /
+            (2 * hyper_grid$sigma_ndvi[i]^2)
+        )
+        f_lai <- -((stack$lai - hyper_grid$mu_lai[i])^2)
+
+        f_water <- exp(-hyper_grid$k_water[i] * stack$water_dist)
+
+        f_ptc <- 1 /
+          (1 + exp(-hyper_grid$k_ptc[i] * (stack$ptc - hyper_grid$c_ptc[i])))
+
+        # Create probability raster:
+        logit_rst <- alpha_vec[i] +
+          (b_ndvi * f_ndvi) +
+          (b_water * f_water) +
+          (b_ptc * f_ptc) +
+          (b_lai * f_lai)
+
+        p_true_rst <- 1 / (1 + exp(-logit_rst))
+
+        png(
+          filename = paste0(
+            "./Data/Cal_images/Non_linear_calibration/Simulated_data_frame_",
+            i,
+            ".png"
+          ),
+          width = 2000,
+          height = 2000,
+          res = 300
+        )
+
+        plot(
+          p_true_rst,
+          main = paste0("Simulated Data Frame ", i),
+          col = viridis(250)
+        )
+
+        dev.off()
       }
 
       # Keep track of Loop process

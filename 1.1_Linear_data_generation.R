@@ -286,13 +286,16 @@ graphics.off()
 # ======================== #
 
 # Create a hyper grid with all of the parameters for the simulated data frames
-hyper_grid <- expand.grid(
-  beta_ndvi = setdiff(seq(from = -2, to = 2, by = 0.5), 0),
-  beta_water = setdiff(seq(from = -2, to = 2, by = 0.5), 0),
-  beta_ptc = setdiff(seq(from = -2, to = 2, by = 0.5), 0),
-  beta_lai = setdiff(seq(from = -2, to = 2, by = 0.5), 0),
-  alpha = setdiff(seq(from = -2, to = 2, by = 0.5), 0)
-)
+{
+  set.seed(3791)
+  hyper_grid <- data.frame(
+    beta_ndvi = runif(1000000, -2, 2),
+    beta_water = runif(1000000, -2, 2),
+    beta_ptc = runif(1000000, -2, 2),
+    beta_lai = runif(1000000, -2, 2),
+    alpha = runif(1000000, -2, 2)
+  )
+}
 
 # Create an empty list for all of the data frames to go into
 data_frames <- list()
@@ -321,11 +324,26 @@ data_frames <- list()
   cand_points$dist_water <- terra::extract(water_dist, coords)[, 1]
 }
 
+diagnostics <- data.frame(
+  sim = seq(1, nrow(hyper_grid)),
+  eta_between3 = NA_real_,
+  eta_sd = NA_real_,
+  p_mean = NA_real_,
+  p_sd = NA_real_,
+  p_min = NA_real_,
+  p_max = NA_real_,
+  p_low = NA_real_,
+  p_high = NA_real_,
+  n_pres = NA_integer_
+)
+
 system.time({
   {
     set.seed(3791)
     # Randomise the hyper grid and sample 1,000,000 rows for the simulation:
     hyper_grid <- hyper_grid[sample(nrow(hyper_grid), nrow(hyper_grid)), ]
+
+    diag_index <- NA
 
     # Create an empty list for all of the data frames to go into
     data_frames <- list()
@@ -361,6 +379,10 @@ system.time({
 
     # Simulation For Loop (vectorized):
     for (i in 1:nrow(hyper_grid)) {
+      if (i %% 100 == 0) {
+        cat("Creating data frame", i, "of", nrow(hyper_grid), "\n")
+      }
+
       # CALCULATE SCALED COEFFICIENTS (vectorized):
       b_ndvi <- beta_ndvi_vec[i] / ndvi_sd
       b_water <- beta_water_vec[i] / water_sd
@@ -384,16 +406,80 @@ system.time({
       presence_idx <- which(presence == 1)
       n_presences <- length(presence_idx)
 
+      diagnostics$n_pres[i] <- n_presences
+      diagnostics$eta_between3[i] <- mean(logit_p >= -3 & logit_p <= 3)
+      diagnostics$eta_sd[i] <- sd(logit_p)
+      diagnostics$p_mean[i] <- mean(p_true)
+      diagnostics$p_sd[i] <- sd(p_true)
+      diagnostics$p_min[i] <- min(p_true)
+      diagnostics$p_max[i] <- max(p_true)
+      diagnostics$p_low[i] <- mean(p_true < 0.05)
+      diagnostics$p_high[i] <- mean(p_true > 0.95)
+
       # --------------------------------------------------------------------------------------------------- #
 
-      # GENERATE ABSENCE POINTS & COMBINE DATA SETS:
+      # FILTERING CONDITIONS:
+      # ===================== #
+
+      if (diagnostics$eta_between3[i] < 0.7) {
+        next # Skip to the next iteration if the condition is met
+      }
+
+      if (diagnostics$eta_sd[i] < 1.9 || diagnostics$eta_sd[i] > 2.4) {
+        next # Skip to the next iteration if the condition is met
+      }
+
+      if (diagnostics$p_mean[i] < 0.3 || diagnostics$p_mean[i] > 0.7) {
+        next # Skip to the next iteration if the condition is met
+      }
+
+      if (diagnostics$p_min[i] > 0.15) {
+        next # Skip to the next iteration if the condition is met
+      }
+
+      if (diagnostics$p_max[i] < 0.85) {
+        next # Skip to the next iteration if the condition is met
+      }
+
+      # --------------------------------------------------------------------------------------------------- #
+
+      # GENERATE PROBABILITY  MAPS, ABSENCE POINTS & COMBINE DATA SETS:
 
       # Only proceed if presences are between 1000 and 10000:
       if (n_presences >= 1000 && n_presences <= 10000) {
         # Keep track of how many data frames have been created
         kept <- kept + 1
+        diag_index[kept] <- i
 
         cat("Creating dataframe", kept, "of 200", "\n") # Print the progress of the data frame creation
+
+        # Create probability raster:
+        logit_rst <- alpha_vec[i] +
+          (b_ndvi * stack$ndvi) +
+          (b_water * stack$water_dist) +
+          (b_ptc * stack$ptc) +
+          (b_lai * stack$lai)
+
+        p_true_rst <- 1 / (1 + exp(-logit_rst))
+
+        png(
+          filename = paste0(
+            "./Data/Cal_images/Linear_calibration/Simulated_data_frame_",
+            i,
+            ".png"
+          ),
+          width = 2000,
+          height = 2000,
+          res = 300
+        )
+
+        plot(
+          p_true_rst,
+          main = paste0("Simulated Data Frame ", i),
+          col = viridis(250)
+        )
+
+        dev.off()
 
         # Extract presence geometries and create sf object:
         presences_geom <- cand_geom[presence_idx]

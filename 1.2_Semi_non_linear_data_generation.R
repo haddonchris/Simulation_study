@@ -283,17 +283,20 @@ graphics.off()
 # ======================== #
 
 # Create a hyper grid with all of the parameters for the simulated data frames
-hyper_grid <- expand.grid(
-  beta_ndvi = setdiff(seq(from = -2, to = 2, by = 0.5), 0),
-  beta_water = setdiff(seq(from = -2, to = 2, by = 0.5), 0),
-  beta_ptc = setdiff(seq(from = -2, to = 2, by = 0.5), 0),
-  beta_lai = setdiff(seq(from = -2, to = 2, by = 0.5), 0),
-  alpha = setdiff(seq(from = -2, to = 2, by = 0.5), 0),
-  z_ndvi = c(0.1, 0.5, 1, 2, 4),
-  z_water = c(0.1, 0.5, 1, 2, 4),
-  z_ptc = c(0.1, 0.5, 1, 2, 4),
-  z_lai = c(0.1, 0.5, 1, 2, 4)
-)
+{
+  set.seed(3791)
+  hyper_grid <- data.frame(
+    beta_ndvi = runif(1000000, -2, 2),
+    beta_water = runif(1000000, -2, 2),
+    beta_ptc = runif(1000000, -2, 2),
+    beta_lai = runif(1000000, -2, 2),
+    alpha = runif(1000000, -2, 2),
+    z_ndvi = runif(1000000, 0.1, 1.5),
+    z_water = runif(1000000, 0.1, 2),
+    z_ptc = runif(1000000, 0.1, 3),
+    z_lai = runif(1000000, 0.1, 2.5)
+  )
+}
 
 # Create the candidate points for the simulation:
 {
@@ -318,6 +321,21 @@ hyper_grid <- expand.grid(
   cand_points$lai <- terra::extract(lai, coords)[, 1]
   cand_points$dist_water <- terra::extract(water_dist, coords)[, 1]
 }
+
+diagnostics <- data.frame(
+  sim = seq(1, nrow(hyper_grid)),
+  eta_between3 = NA_real_,
+  eta_sd = NA_real_,
+  p_mean = NA_real_,
+  p_sd = NA_real_,
+  p_min = NA_real_,
+  p_max = NA_real_,
+  p_low = NA_real_,
+  p_high = NA_real_,
+  n_pres = NA_integer_
+)
+
+diag_index <- NA
 
 system.time({
   {
@@ -364,6 +382,10 @@ system.time({
 
     # Simulation For Loop (vectorized):
     for (i in 1:nrow(hyper_grid)) {
+      if (i %% 100 == 0) {
+        cat("Creating data frame", i, "of", nrow(hyper_grid), "\n")
+      }
+
       # CALCULATE SCALED COEFFICIENTS (vectorized):
       b_ndvi <- beta_ndvi_vec[i] / ndvi_sd
       b_water <- beta_water_vec[i] / water_sd
@@ -387,6 +409,45 @@ system.time({
       presence_idx <- which(presence == 1)
       n_presences <- length(presence_idx)
 
+      diagnostics$n_pres[i] <- n_presences
+      diagnostics$eta_between3[i] <- mean(logit_p >= -3 & logit_p <= 3)
+      diagnostics$eta_sd[i] <- sd(logit_p)
+      diagnostics$p_mean[i] <- mean(p_true)
+      diagnostics$p_sd[i] <- sd(p_true)
+      diagnostics$p_min[i] <- min(p_true)
+      diagnostics$p_max[i] <- max(p_true)
+      diagnostics$p_low[i] <- mean(p_true < 0.05)
+      diagnostics$p_high[i] <- mean(p_true > 0.95)
+
+      # --------------------------------------------------------------------------------------------------- #
+
+      # FILTERING CONDITIONS:
+      # ===================== #
+
+      if (diagnostics$eta_between3[i] < 0.5) {
+        next # Skip to the next iteration if the condition is met
+      }
+
+      if (diagnostics$eta_sd[i] < 1.5 || diagnostics$eta_sd[i] > 4.0) {
+        next # Skip to the next iteration if the condition is met
+      }
+
+      if (diagnostics$p_mean[i] < 0.3 || diagnostics$p_mean[i] > 0.7) {
+        next # Skip to the next iteration if the condition is met
+      }
+
+      if (diagnostics$p_sd[i] < 0.2 || diagnostics$p_sd[i] > 0.4) {
+        next # Skip to the next iteration if the condition is met
+      }
+
+      if (diagnostics$p_min[i] > 0.15) {
+        next # Skip to the next iteration if the condition is met
+      }
+
+      if (diagnostics$p_max[i] < 0.85) {
+        next # Skip to the next iteration if the condition is met
+      }
+
       # --------------------------------------------------------------------------------------------------- #
 
       # GENERATE ABSENCE POINTS & COMBINE DATA SETS:
@@ -395,6 +456,7 @@ system.time({
       if (n_presences >= 1000 && n_presences <= 10000) {
         # Keep track of how many data frames have been created
         kept <- kept + 1
+        diag_index[kept] <- i
 
         # Print the progress of the data frame creation
         cat("Creating dataframe", kept, "of 200", "\n")
@@ -414,8 +476,38 @@ system.time({
           df = sim_data,
           equation = hyper_grid[i, ]
         )
+
+        # Create probability raster:
+        logit_rst <- alpha_vec[i] +
+          (b_ndvi * (stack$ndvi^z_ndvi_vec[i])) +
+          (b_water * (stack$water_dist^z_water_vec[i])) +
+          (b_ptc * (stack$ptc^z_ptc_vec[i])) +
+          (b_lai * (stack$lai^z_lai_vec[i]))
+
+        p_true_rst <- 1 / (1 + exp(-logit_rst))
+
+        # Create a raster of the true probabilities for visualization
+        png(
+          filename = paste0(
+            "./Data/Cal_images/Semi_non_linear_calibration/Simulated_data_frame_",
+            i,
+            ".png"
+          ),
+          width = 2000,
+          height = 2000,
+          res = 300
+        )
+
+        plot(
+          p_true_rst,
+          main = paste0("Simulated Data Frame ", i),
+          col = viridis(250)
+        )
+
+        dev.off()
       }
 
+      # Break the loop if 200 data frames have been created
       if (kept == 200) break
     }
 
