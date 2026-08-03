@@ -322,6 +322,7 @@ graphics.off()
   cand_points$dist_water <- terra::extract(water_dist, coords)[, 1]
 }
 
+# Create a diagnostics data frame to store the statistics for each simulated data frame:
 diagnostics <- data.frame(
   sim = seq(1, nrow(hyper_grid)),
   eta_between3 = NA_real_,
@@ -330,8 +331,6 @@ diagnostics <- data.frame(
   p_sd = NA_real_,
   p_min = NA_real_,
   p_max = NA_real_,
-  p_low = NA_real_,
-  p_high = NA_real_,
   n_pres = NA_integer_
 )
 
@@ -416,8 +415,6 @@ system.time({
       diagnostics$p_sd[i] <- sd(p_true)
       diagnostics$p_min[i] <- min(p_true)
       diagnostics$p_max[i] <- max(p_true)
-      diagnostics$p_low[i] <- mean(p_true < 0.05)
-      diagnostics$p_high[i] <- mean(p_true > 0.95)
 
       # --------------------------------------------------------------------------------------------------- #
 
@@ -440,11 +437,11 @@ system.time({
         next # Skip to the next iteration if the condition is met
       }
 
-      if (diagnostics$p_min[i] > 0.15) {
+      if (diagnostics$p_min[i] > 0.10) {
         next # Skip to the next iteration if the condition is met
       }
 
-      if (diagnostics$p_max[i] < 0.85) {
+      if (diagnostics$p_max[i] < 0.90) {
         next # Skip to the next iteration if the condition is met
       }
 
@@ -477,6 +474,9 @@ system.time({
           equation = hyper_grid[i, ]
         )
 
+        # Create a raster of the true probabilities for visualization:
+        # ------------------------------------------------------------ #
+
         # Create probability raster:
         logit_rst <- alpha_vec[i] +
           (b_ndvi * (stack$ndvi^z_ndvi_vec[i])) +
@@ -490,17 +490,17 @@ system.time({
         png(
           filename = paste0(
             "./Data/Cal_images/Semi_non_linear_calibration/Simulated_data_frame_",
-            i,
+            kept,
             ".png"
           ),
           width = 2000,
-          height = 2000,
+          height = 2200,
           res = 300
         )
 
         plot(
           p_true_rst,
-          main = paste0("Simulated Data Frame ", i),
+          main = paste0("Simulated Data Frame ", kept, "\nIteration ", i),
           col = viridis(250)
         )
 
@@ -565,6 +565,28 @@ system.time({
       z_ptc_vec,
       kept
     )
+
+    # FILTER THE LISTS AND EDIT: ####
+    # ========================== #
+
+    # Add a unique ID and extract all satellite variables for each data frame (vectorized):
+    for (i in 1:length(data_frames)) {
+      # Add unique ID:
+      data_frames[[i]]$mod_id <- paste0("mod_", i)
+
+      # Extract satellite imagery data (vectorized):
+      coords <- st_coordinates(data_frames[[i]]$df)
+      vals <- terra::extract(stack, terra::vect(coords), df = TRUE)
+      data_frames[[i]]$df <- cbind(data_frames[[i]]$df, vals[, -1])
+
+      # Keep track of the loop's progress
+      if (i %% 10 == 0) {
+        cat("Extracting for data frame", i, "of", length(data_frames), "\n")
+      }
+    }
+
+    # Remove unnecessary objects:
+    rm(coords, i, stack, vals)
   }
 })
 
@@ -572,29 +594,9 @@ system.time({
 # --------------------------------------------------------------------------------------------------- #
 # --------------------------------------------------------------------------------------------------- #
 
-# FILTER THE LISTS AND EDIT: ####
-# ========================== #
+# SAVE THE DATA FRAMES: ####
+# ===================== #
 
-# Add a unique ID and extract all satellite variables for each data frame (vectorized):
-for (i in 1:length(data_frames)) {
-  # Add unique ID:
-  data_frames[[i]]$mod_id <- paste0("mod_", i)
-
-  # Extract satellite imagery data (vectorized):
-  coords <- st_coordinates(data_frames[[i]]$df)
-  vals <- terra::extract(stack, terra::vect(coords), df = TRUE)
-  data_frames[[i]]$df <- cbind(data_frames[[i]]$df, vals[, -1])
-
-  # Keep track of the loop's progress
-  if (i %% 10 == 0) {
-    cat("Extracting for data frame", i, "of", length(data_frames), "\n")
-  }
-}
-
-# Remove unnecessary objects:
-rm(coords, i, stack, vals)
-
-# Save the lists to avoid re-running the code:
 saveRDS(
   data_frames,
   "./Data/Final_data/Semi_non_linear_data_200_data_frames.rds"

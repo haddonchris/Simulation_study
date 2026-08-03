@@ -531,17 +531,17 @@ system.time({
         png(
           filename = paste0(
             "./Data/Cal_images/Non_linear_calibration/Simulated_data_frame_",
-            i,
+            kept,
             ".png"
           ),
           width = 2000,
-          height = 2000,
+          height = 2200,
           res = 300
         )
 
         plot(
           p_true_rst,
-          main = paste0("Simulated Data Frame ", i),
+          main = paste0("Simulated Data Frame ", kept, "\nIteration ", i),
           col = viridis(250)
         )
 
@@ -607,34 +607,36 @@ system.time({
       lai_sd,
       kept
     )
+
+    # FILTER THE LISTS AND EDIT: ####
+    # ========================== #
+
+    # Add a unique ID and extract all satellite variables for each data frame (vectorized):
+    for (i in 1:length(data_frames)) {
+      # Add unique ID:
+      data_frames[[i]]$mod_id <- paste0("mod_", i)
+
+      # Extract satellite imagery data (vectorized):
+      coords <- st_coordinates(data_frames[[i]]$df)
+      vals <- terra::extract(stack, terra::vect(coords), df = TRUE)
+      data_frames[[i]]$df <- cbind(data_frames[[i]]$df, vals[, -1])
+
+      if (i %% 10 == 0) {
+        cat("Extracting for data frame", i, "of", length(data_frames), "\n")
+      }
+    }
+
+    # Remove unnecessary objects:
+    rm(coords, i, stack, vals)
   }
 })
 
 # --------------------------------------------------------------------------------------------------- #
 # --------------------------------------------------------------------------------------------------- #
 
-# FILTER THE LISTS AND EDIT: ####
-# ========================== #
+# SAVE THE DATA FRAMES: ####
+# ===================== #
 
-# Add a unique ID and extract all satellite variables for each data frame (vectorized):
-for (i in 1:length(data_frames)) {
-  # Add unique ID:
-  data_frames[[i]]$mod_id <- paste0("mod_", i)
-
-  # Extract satellite imagery data (vectorized):
-  coords <- st_coordinates(data_frames[[i]]$df)
-  vals <- terra::extract(stack, terra::vect(coords), df = TRUE)
-  data_frames[[i]]$df <- cbind(data_frames[[i]]$df, vals[, -1])
-
-  if (i %% 10 == 0) {
-    cat("Extracting for data frame", i, "of", length(data_frames), "\n")
-  }
-}
-
-# Remove unnecessary objects:
-rm(coords, i, stack, vals)
-
-# Save the lists to avoid re-running the code:
 saveRDS(
   data_frames,
   "./Data/Final_data/Non_linear_data_200_data_frames.rds"

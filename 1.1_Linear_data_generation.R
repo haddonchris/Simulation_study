@@ -324,16 +324,14 @@ data_frames <- list()
   cand_points$dist_water <- terra::extract(water_dist, coords)[, 1]
 }
 
+# Create a diagnostics data frame to store the statistics for each simulated data frame:
 diagnostics <- data.frame(
   sim = seq(1, nrow(hyper_grid)),
-  eta_between3 = NA_real_,
   eta_sd = NA_real_,
   p_mean = NA_real_,
   p_sd = NA_real_,
   p_min = NA_real_,
   p_max = NA_real_,
-  p_low = NA_real_,
-  p_high = NA_real_,
   n_pres = NA_integer_
 )
 
@@ -407,23 +405,16 @@ system.time({
       n_presences <- length(presence_idx)
 
       diagnostics$n_pres[i] <- n_presences
-      diagnostics$eta_between3[i] <- mean(logit_p >= -3 & logit_p <= 3)
       diagnostics$eta_sd[i] <- sd(logit_p)
       diagnostics$p_mean[i] <- mean(p_true)
       diagnostics$p_sd[i] <- sd(p_true)
       diagnostics$p_min[i] <- min(p_true)
       diagnostics$p_max[i] <- max(p_true)
-      diagnostics$p_low[i] <- mean(p_true < 0.05)
-      diagnostics$p_high[i] <- mean(p_true > 0.95)
 
       # --------------------------------------------------------------------------------------------------- #
 
       # FILTERING CONDITIONS:
       # ===================== #
-
-      if (diagnostics$eta_between3[i] < 0.7) {
-        next # Skip to the next iteration if the condition is met
-      }
 
       if (diagnostics$eta_sd[i] < 1.9 || diagnostics$eta_sd[i] > 2.4) {
         next # Skip to the next iteration if the condition is met
@@ -433,11 +424,11 @@ system.time({
         next # Skip to the next iteration if the condition is met
       }
 
-      if (diagnostics$p_min[i] > 0.15) {
+      if (diagnostics$p_min[i] > 0.10) {
         next # Skip to the next iteration if the condition is met
       }
 
-      if (diagnostics$p_max[i] < 0.85) {
+      if (diagnostics$p_max[i] < 0.90) {
         next # Skip to the next iteration if the condition is met
       }
 
@@ -452,34 +443,6 @@ system.time({
         diag_index[kept] <- i
 
         cat("Creating dataframe", kept, "of 200", "\n") # Print the progress of the data frame creation
-
-        # Create probability raster:
-        logit_rst <- alpha_vec[i] +
-          (b_ndvi * stack$ndvi) +
-          (b_water * stack$water_dist) +
-          (b_ptc * stack$ptc) +
-          (b_lai * stack$lai)
-
-        p_true_rst <- 1 / (1 + exp(-logit_rst))
-
-        png(
-          filename = paste0(
-            "./Data/Cal_images/Linear_calibration/Simulated_data_frame_",
-            i,
-            ".png"
-          ),
-          width = 2000,
-          height = 2000,
-          res = 300
-        )
-
-        plot(
-          p_true_rst,
-          main = paste0("Simulated Data Frame ", i),
-          col = viridis(250)
-        )
-
-        dev.off()
 
         # Extract presence geometries and create sf object:
         presences_geom <- cand_geom[presence_idx]
@@ -496,6 +459,37 @@ system.time({
           df = sim_data,
           equation = hyper_grid[i, ]
         )
+
+        # Create a raster of the true probabilities for visualization:
+        # ------------------------------------------------------------ #
+
+        # Create probability raster:
+        logit_rst <- alpha_vec[i] +
+          (b_ndvi * stack$ndvi) +
+          (b_water * stack$water_dist) +
+          (b_ptc * stack$ptc) +
+          (b_lai * stack$lai)
+
+        p_true_rst <- 1 / (1 + exp(-logit_rst))
+
+        png(
+          filename = paste0(
+            "./Data/Cal_images/Linear_calibration/Simulated_data_frame_",
+            kept,
+            ".png"
+          ),
+          width = 2000,
+          height = 2200,
+          res = 300
+        )
+
+        plot(
+          p_true_rst,
+          main = paste0("Simulated Data Frame ", kept, "\nIteration ", i),
+          col = viridis(250)
+        )
+
+        dev.off()
       }
 
       # Keep track of Loop process
@@ -552,6 +546,27 @@ system.time({
       lai_sd,
       kept
     )
+
+    # FILTER THE LISTS AND EDIT: ####
+    # ========================== #
+
+    # Add a unique ID and extract all satellite variables for each data frame (vectorized):
+    for (i in 1:length(data_frames)) {
+      # Add unique ID:
+      data_frames[[i]]$mod_id <- paste0("mod_", i)
+
+      # Extract satellite imagery data (vectorized):
+      coords <- st_coordinates(data_frames[[i]]$df)
+      vals <- terra::extract(stack, terra::vect(coords), df = TRUE)
+      data_frames[[i]]$df <- cbind(data_frames[[i]]$df, vals[, -1])
+
+      # Keep track of the loop's progress
+      if (i %% 10 == 0) {
+        cat("Extracting for data frame", i, "of", length(data_frames), "\n")
+      }
+    }
+
+    rm(coords, i, stack, vals)
   }
 })
 
@@ -559,26 +574,8 @@ system.time({
 # --------------------------------------------------------------------------------------------------- #
 # --------------------------------------------------------------------------------------------------- #
 
-# FILTER THE LISTS AND EDIT: ####
-# ========================== #
-
-# Add a unique ID and extract all satellite variables for each data frame (vectorized):
-for (i in 1:length(data_frames)) {
-  # Add unique ID:
-  data_frames[[i]]$mod_id <- paste0("mod_", i)
-
-  # Extract satellite imagery data (vectorized):
-  coords <- st_coordinates(data_frames[[i]]$df)
-  vals <- terra::extract(stack, terra::vect(coords), df = TRUE)
-  data_frames[[i]]$df <- cbind(data_frames[[i]]$df, vals[, -1])
-
-  # Keep track of the loop's progress
-  if (i %% 10 == 0) {
-    cat("Extracting for data frame", i, "of", length(data_frames), "\n")
-  }
-}
-
-rm(coords, i, stack, vals)
+# SAVE THE DATA FRAMES: ####
+# ===================== #
 
 # Save the lists to avoid re-running the code:
-saveRDS(data_frames, "./Data/Final_data/Simple_data_200_data_frames.rds")
+saveRDS(data_frames, "./Data/Final_data/Linear_data_200_data_frames.rds")
