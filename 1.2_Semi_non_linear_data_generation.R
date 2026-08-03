@@ -325,7 +325,6 @@ graphics.off()
 # Create a diagnostics data frame to store the statistics for each simulated data frame:
 diagnostics <- data.frame(
   sim = seq(1, nrow(hyper_grid)),
-  eta_between3 = NA_real_,
   eta_sd = NA_real_,
   p_mean = NA_real_,
   p_sd = NA_real_,
@@ -409,7 +408,6 @@ system.time({
       n_presences <- length(presence_idx)
 
       diagnostics$n_pres[i] <- n_presences
-      diagnostics$eta_between3[i] <- mean(logit_p >= -3 & logit_p <= 3)
       diagnostics$eta_sd[i] <- sd(logit_p)
       diagnostics$p_mean[i] <- mean(p_true)
       diagnostics$p_sd[i] <- sd(p_true)
@@ -421,11 +419,7 @@ system.time({
       # FILTERING CONDITIONS:
       # ===================== #
 
-      if (diagnostics$eta_between3[i] < 0.5) {
-        next # Skip to the next iteration if the condition is met
-      }
-
-      if (diagnostics$eta_sd[i] < 1.5 || diagnostics$eta_sd[i] > 4.0) {
+      if (diagnostics$eta_sd[i] < 2.1 || diagnostics$eta_sd[i] > 3.0) {
         next # Skip to the next iteration if the condition is met
       }
 
@@ -433,7 +427,7 @@ system.time({
         next # Skip to the next iteration if the condition is met
       }
 
-      if (diagnostics$p_sd[i] < 0.2 || diagnostics$p_sd[i] > 0.4) {
+      if (diagnostics$p_sd[i] < 0.3 || diagnostics$p_sd[i] > 0.35) {
         next # Skip to the next iteration if the condition is met
       }
 
@@ -505,6 +499,8 @@ system.time({
         )
 
         dev.off()
+      } else {
+        next # Skip to the next iteration if the condition is not met
       }
 
       # Break the loop if 200 data frames have been created

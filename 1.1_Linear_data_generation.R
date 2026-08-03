@@ -490,6 +490,8 @@ system.time({
         )
 
         dev.off()
+      } else {
+        next # Skip to the next iteration if the condition is not met
       }
 
       # Keep track of Loop process
