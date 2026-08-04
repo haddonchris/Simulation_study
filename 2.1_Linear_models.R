@@ -26,13 +26,24 @@ graphics.off()
 # READ IN THE DATA: ####
 # ================= #
 
-sdf <- readRDS("./Data/Final_data/Simple_data_200_data_frames.rds")
+sdf <- readRDS("./Data/Final_data/Linear_data_200_data_frames.rds")
 
 # --------------------------------------------------------------------------------------------------- #
 # --------------------------------------------------------------------------------------------------- #
 
 # EXTRACT MODEL PERFORMANCE METRICS FOR LOGISTIC REGRESSION: ####
 # ========================================================== #
+
+# Create an empty data frame to store the model performance metrics:
+model_performance <- data.frame(
+  Model_type = character(), # Model type (e.g., logistic regression, random forest)
+  model_id = character(), # Unique identifier for each model/data frame
+  Sensitivity = numeric(), # Sensitivity (true positive rate)
+  Specificity = numeric(), # Specificity (true negative rate)
+  TSS = numeric(), # True Skill Statistic (TSS = Sensitivity + Specificity - 1)
+  AUC = numeric(), # Area Under the Curve (AUC) for the ROC curve
+  stringsAsFactors = FALSE # Prevent automatic conversion of character columns to factors
+)
 
 n <- length(sdf) # Number of data frames/models to evaluate
 
@@ -67,7 +78,25 @@ system.time({
         family = binomial(link = "logit")
       )
 
+      # Store the fitted model in the list for later use:
       sdf[[i]]$lr_mod <- mod
+
+      # Make predictions and create a confusion matrix:
+      pred_lr <- predict(mod, newdata = test, type = "response")
+      pred_class_lr <- ifelse(pred_lr >= 0.5, 1, 0) # Convert probabilities to class labels based on a threshold of 0.5
+      pred_class_lr <- factor(pred_class_lr, levels = c(1, 0)) # Convert to factor with levels 1 and 0
+      obs <- factor(test$presence, levels = c(1, 0)) # Convert observed values to factor with levels 1 and 0
+      conf_mat <- caret::confusionMatrix(pred_class_lr, obs)
+
+      # Store the model performance metrics in the data frame:
+      model_performance[i, 1] <- "logistic_regression"
+      model_performance[i, 2] <- sdf[[i]]$mod_id
+      model_performance[i, 3] <- conf_mat$byClass["Sensitivity"]
+      model_performance[i, 4] <- conf_mat$byClass["Specificity"]
+      model_performance[i, 5] <- (conf_mat$byClass["Sensitivity"] +
+        conf_mat$byClass["Specificity"] -
+        1)
+      model_performance[i, 6] <- auc(roc(test$presence, pred_lr, quiet = TRUE))
     }
   }
 
@@ -94,8 +123,8 @@ system.time({
   hyper_grid <- expand.grid(
     mtry = seq(2, 12, by = 1),
     node_size = c(1, 2, 3, 4, 6, 8, 10, 15),
-    OOB_RMSE = 0,
-    pred_error = 0
+    Brier = 0,
+    OOB_RMSE = 0
   )
 
   # Set up parallel processing:
@@ -155,13 +184,14 @@ system.time({
             min.node.size = hyper_grid$node_size[j],
             sample.fraction = 0.7,
             seed = 3791,
-            num.threads = 1 # Ensure that each model runs on a single thread to prevent nested parallelism issues
+            num.threads = 1, # Ensure that each model runs on a single thread to prevent nested parallelism issues
+            probability = TRUE
           )
 
           # Store the OOB RMSE and prediction error in the hyperparameter grid:
           data.frame(
-            OOB_RMSE = sqrt(model$prediction.error),
-            pred_error = model$prediction.error * 100
+            Brier = model$prediction.error,
+            OOB_RMSE = sqrt(model$prediction.error)
           )
         }
 
@@ -169,17 +199,19 @@ system.time({
 
       # ------------------------------------------------------------------------------------------------ #
 
+      results <- cbind(hyper_grid, results) # Combine the hyperparameter grid with the results
+
       # Arrange the hyperparameter grid by prediction error
-      hyper_params <- hyper_grid |>
-        dplyr::arrange(pred_error)
+      best <- results |>
+        dplyr::slice_min(Brier, n = 1)
 
       # Fit the final random forest model with the best hyperparameters:
       rf <- ranger(
         formula = factor(presence, levels = c(0, 1)) ~ .,
         data = train,
         num.trees = 500,
-        mtry = hyper_params$mtry[1],
-        min.node.size = hyper_params$node_size[1],
+        mtry = best$mtry,
+        min.node.size = best$node_size,
         sample.fraction = 0.7,
         seed = 3791,
         write.forest = T,
@@ -188,6 +220,30 @@ system.time({
       )
 
       sdf[[i]]$rf_mod <- rf
+
+      # Make predictions and create a confusion matrix:
+      pred_rf <- predict(rf, data = test) # Get the predicted probabilities for the positive class (presence = 1)
+      pred_rf <- pred_rf$predictions[, "1"] # Extract the predicted probabilities for the positive class (presence = 1)
+      preds_rf <- ifelse(pred_rf >= 0.5, 1, 0) # Convert probabilities to class labels based on a threshold of 0.5
+      pred_class_rf <- factor(preds_rf, levels = c(1, 0)) # Convert to factor with levels 1 and 0
+      obs <- factor(test$presence, levels = c(1, 0)) # Convert observed values to factor with levels 1 and 0
+
+      # Create the confusion matrix using the caret package:
+      conf_mat <- confusionMatrix(pred_class_rf, obs)
+
+      # Store the model performance metrics in the data frame:
+      model_performance[i + n, 1] <- "Random_Forest"
+      model_performance[i + n, 2] <- sdf[[i]]$mod_id
+      model_performance[i + n, 3] <- conf_mat$byClass["Sensitivity"]
+      model_performance[i + n, 4] <- conf_mat$byClass["Specificity"]
+      model_performance[i + n, 5] <- conf_mat$byClass["Sensitivity"] +
+        conf_mat$byClass["Specificity"] -
+        1
+      model_performance[i + n, 6] <- auc(roc(
+        test$presence,
+        pred_rf,
+        quiet = TRUE
+      ))
     } # End of loop
 
     stopCluster(cl)
@@ -223,5 +279,11 @@ rm(
 
 saveRDS(
   sdf,
-  "./Data/Final_data/Simple_200_data_frames_with_models.rds"
+  "./Data/Final_data/Linear_200_data_frames_with_models.rds"
+)
+
+write.csv(
+  model_performance,
+  "./Data/Final_data/Linear_200_data_frames_model_performance.csv",
+  row.names = FALSE
 )
