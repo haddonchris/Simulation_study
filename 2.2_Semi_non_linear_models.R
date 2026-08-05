@@ -123,9 +123,7 @@ system.time({
   # Create a hyperparameter grid for tuning the random forest model:
   hyper_grid <- expand.grid(
     mtry = seq(2, 12, by = 1),
-    node_size = c(1, 2, 3, 4, 6, 8, 10, 15),
-    Brier = 0,
-    OOB_RMSE = 0
+    node_size = c(1, 2, 3, 4, 6, 8, 10, 15)
   )
 
   # Set up parallel processing:
@@ -288,3 +286,12 @@ write.csv(
   "./Data/Final_data/Semi_non_linear_200_data_frames_model_performance.csv",
   row.names = FALSE
 )
+
+test <- model_performance |>
+  dplyr::group_by(Model_type) |>
+  dplyr::summarise(
+    mean_sensitivity = mean(Sensitivity, na.rm = TRUE),
+    mean_specificity = mean(Specificity, na.rm = TRUE),
+    mean_tss = mean(TSS, na.rm = TRUE),
+    mean_auc = mean(AUC, na.rm = TRUE)
+  )

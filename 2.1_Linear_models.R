@@ -122,9 +122,7 @@ system.time({
   # Create a hyperparameter grid for tuning the random forest model:
   hyper_grid <- expand.grid(
     mtry = seq(2, 12, by = 1),
-    node_size = c(1, 2, 3, 4, 6, 8, 10, 15),
-    Brier = 0,
-    OOB_RMSE = 0
+    node_size = c(1, 2, 3, 4, 6, 8, 10, 15)
   )
 
   # Set up parallel processing:
