@@ -286,12 +286,3 @@ write.csv(
   "./Data/Final_data/Semi_non_linear_200_data_frames_model_performance.csv",
   row.names = FALSE
 )
-
-test <- model_performance |>
-  dplyr::group_by(Model_type) |>
-  dplyr::summarise(
-    mean_sensitivity = mean(Sensitivity, na.rm = TRUE),
-    mean_specificity = mean(Specificity, na.rm = TRUE),
-    mean_tss = mean(TSS, na.rm = TRUE),
-    mean_auc = mean(AUC, na.rm = TRUE)
-  )
