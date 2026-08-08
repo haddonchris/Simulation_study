@@ -17,13 +17,20 @@ The repository is organized into four main script groups:
 ### `1.1_Linear_data_generation.R`
 Creates the linear simulation dataset. It loads raster predictors, computes distance to water, resamples and masks all covariates to the Gorongosa National Park boundary, calculates summary statistics for scaling, samples candidate locations, simulates presence/absence data under a linear response surface, and saves the final list of simulated data frames.
 
-$$\Large{Y_i = \alpha + \beta_1 X_{i} + \beta_2X_{i}^2} + \epsilon_i$$
+$$\Large{y_i \sim \text{Bernoulli}(p_i)}$$
+$$\Large{\text{logit}(p_i) = \alpha + \beta_{1}X_{1i} + \beta_{2}X_{2i} + \beta_{3}X_{3i} + \beta_{4} X_{4i}}$$
 
 ### `1.2_Semi_non_linear_data_generation.R`
 Creates the semi-non-linear simulation dataset. It follows the same general structure as the linear generator, but uses a semi-non-linear response surface and a large hyperparameter grid to produce accepted simulated data frames and calibration figures.
 
+$$\Large{y_i \sim \text{Bernoulli}(p_i)}$$
+$$\Large{\text{logit}(p_i) = \alpha + \beta_{1}X_{1i}^{z} + \beta_{2}X_{2i}^{z} + \beta_{3}X_{3i}^{z} + \beta_{4}X_{4i}^{z}}$$
+
 ### `1.3_Non_linear_data_generation.R`
 Creates the non-linear simulation dataset. It uses the same environmental predictors and sampling framework, then simulates datasets under a more strongly non-linear response function and writes the final simulated data frames and calibration outputs.
+
+$$\Large{y_i \sim \text{Bernoulli}(p_i)}$$
+$$\Large{\text{logit}(p_i) = \alpha + {\beta_{1} \space e^{\left(-\frac{(x_{1i} - \mu_{x_1})^2}{2 \sigma_{x_1}^2}\right)}} + \beta_{2} (-(x_{2i}-\mu_{x_{2}})^2) + \beta_3 \space e^{-k_{x_3}x_{3i}} + \beta_4 \frac{1}{1 + e^{-k_{x_4} (x_{4i} - c)}}}$$
 
 ### Model fitting
 
