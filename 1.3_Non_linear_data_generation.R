@@ -43,22 +43,6 @@ graphics.off()
     rm(ndvi_files)
   }
 
-  # EVI
-  {
-    cat("Getting EVI data...", "\n")
-    evi_files <- data.frame(
-      files = list.files(
-        # List all of the file names and add as a column in a data frame
-        path = "./Satellite_images/EVI",
-        pattern = "\\.tif$",
-        full.names = TRUE
-      )
-    )
-    evi_mean <- mean(terra::rast(evi_files$files))
-    names(evi_mean) <- "evi"
-    rm(evi_files)
-  }
-
   # Leaf Area Index:
   {
     cat("Getting LAI data...", "\n")
@@ -91,67 +75,6 @@ graphics.off()
     ptc_mean <- mean(terra::rast(ptc_files$files)) # Read in the files as a raster stack
     names(ptc_mean) <- "ptc"
     rm(ptc_files)
-  }
-
-  # Percent non-tree vegetation:
-  {
-    cat("Getting PNT data...", "\n")
-    pnt_files <- data.frame(
-      files = list.files(
-        # List all of the file names and add as a column in a data frame
-        path = "./Satellite_images/percent_non_tree",
-        pattern = "\\.tif$",
-        full.names = TRUE
-      )
-    )
-
-    # Create a Raster Stack:
-    pnt_mean <- mean(terra::rast(pnt_files$files)) # Read in the files as a raster stack
-    names(pnt_mean) <- "pnt"
-    rm(pnt_files)
-  }
-
-  # Percent non-vegetation
-  {
-    cat("Getting PNV data...", "\n")
-    pnv_files <- data.frame(
-      files = list.files(
-        # List all of the file names and add as a column in a data frame
-        path = "./Satellite_images/percent_non_veg",
-        pattern = "\\.tif$",
-        full.names = TRUE
-      )
-    )
-
-    pnv_mean <- mean(terra::rast(pnv_files$files))
-    names(pnv_mean) <- "pnv"
-    rm(pnv_files)
-  }
-
-  # Terrain variables
-  {
-    cat("Getting terrain data...", "\n")
-
-    elev <- terra::rast("./Satellite_images/Elevation/elevation_export.tif")
-    names(elev) <- "elev"
-    slope <- terra::rast("./Satellite_images/Slope/slope_export.tif")
-    names(slope) <- "slope"
-  }
-
-  # Soil Variables:
-  {
-    cat("Getting soil data...", "\n")
-
-    soil_files <- list.files(
-      path = "./Satellite_images/Soil_variables",
-      pattern = "\\.tif$",
-      full.names = TRUE
-    )
-
-    # Make a raster Stack
-    soil_rst <- terra::rast(soil_files)
-    names(soil_rst) <- c("clay", "sand", "silt")
-    rm(soil_files)
   }
 
   # Distance to water:
@@ -195,25 +118,15 @@ graphics.off()
     rst <- terra::rast("./Satellite_images/Elevation/elevation_export.tif")
 
     ndvi <- resample(x = ndvi_mean, y = rst)
-    evi <- resample(x = evi_mean, y = rst)
     lai <- resample(x = lai_mean, y = rst)
     ptc <- resample(x = ptc_mean, y = rst)
-    pnt <- resample(x = pnt_mean, y = rst)
-    pnv <- resample(x = pnv_mean, y = rst)
-    elev <- resample(x = elev, y = rst)
-    slope <- resample(x = slope, y = rst)
-    soil <- resample(x = soil_rst, y = rst)
     water_dist <- resample(x = water_dist, y = rst)
 
     rm(
       rst,
       ndvi_mean,
-      evi_mean,
       lai_mean,
-      ptc_mean,
-      pnt_mean,
-      pnv_mean,
-      soil_rst
+      ptc_mean
     )
   }
 
@@ -233,56 +146,28 @@ graphics.off()
   {
     cat("Masking and cropping rasters...", "\n")
     ndvi <- mask(crop(ndvi, gnp), gnp)
-    evi <- mask(crop(evi, gnp), gnp)
     lai <- mask(crop(lai, gnp), gnp)
     ptc <- mask(crop(ptc, gnp), gnp)
-    pnt <- mask(crop(pnt, gnp), gnp)
-    pnv <- mask(crop(pnv, gnp), gnp)
-    elev <- mask(crop(elev, gnp), gnp)
-    slope <- mask(crop(slope, gnp), gnp)
-    soil <- mask(crop(soil, gnp), gnp)
     water_dist <- mask(crop(water_dist, gnp), gnp)
 
     stack <- c(
       ndvi,
-      evi,
       lai,
       ptc,
-      pnt,
-      pnv,
-      elev,
-      slope,
-      soil,
       water_dist
     )
 
     # Calculate the mean and standard deviation for the rasters (for scaling the coefficients)
     cat("Calculating raster statistics...", "\n")
-    ndvi_stats <- global(
-      ndvi,
-      fun = c("mean", "sd", "min", "max"),
-      na.rm = TRUE
-    )
-    water_stats <- global(
-      water_dist,
-      fun = c("mean", "sd", "min", "max"),
-      na.rm = TRUE
-    )
-    ptc_stats <- global(ptc, fun = c("mean", "sd", "min", "max"), na.rm = TRUE)
-    lai_stats <- global(lai, fun = c("mean", "sd", "min", "max"), na.rm = TRUE)
+    ndvi_stats <- global(ndvi, fun = c("mean", "sd"), na.rm = TRUE)
+    water_stats <- global(water_dist, fun = c("mean", "sd"), na.rm = TRUE)
+    ptc_stats <- global(ptc, fun = c("mean", "sd"), na.rm = TRUE)
+    lai_stats <- global(lai, fun = c("mean", "sd"), na.rm = TRUE)
   }
 
-  # Remove unnecessary objects
-  rm(
-    elev,
-    evi,
-    pnt,
-    pnv,
-    slope,
-    soil
-  )
   cat("Done!!!")
 }
+
 
 # --------------------------------------------------------------------------------------------------- #
 # --------------------------------------------------------------------------------------------------- #
