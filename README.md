@@ -1,48 +1,82 @@
 # Simulation Study Chapter
 
-This repository contains an R-based simulation study for Gorongosa National Park. It builds environmental raster predictors, simulates presence/absence datasets under different response shapes, fits statistical and machine-learning models, and compares predicted probabilities to known truth.
+This repository contains an R-based simulation study for Gorongosa National Park. The workflow builds environmental predictors from raster and vector data, simulates presence/absence datasets under different response shapes, fits logistic regression and random forest models, and compares predicted probabilities to the known generating surface.
 
-## Project workflow
+## Project structure
 
-The project is organized into three main stages:
+The repository is organized into four main script groups:
 
-1. **Data generation** — scripts in the `1.x_*_data_generation.R` series create simulated datasets for linear, semi-non-linear, and non-linear response surfaces.
-2. **Model fitting** — scripts in the `2.x_*_models.R` series fit the models used in the simulation study.
-3. **Analysis and evaluation** — scripts in the `3.x_*_analysis.R` series compare predicted and true probabilities, calculate error metrics, and save diagnostic figures.
+- `1.x_*_data_generation.R` — generate simulated datasets
+- `2.x_*_models.R` — fit logistic regression and random forest models
+- `3.x_*_analysis.R` — evaluate model performance and produce diagnostic figures
 
-A separate set of `Testing_*.R` scripts contains exploratory and diagnostic work.
+## Script overview
 
-## Main scripts tracked in this repository
+### Data generation
+
+### `1.1_Linear_data_generation.R`
+Creates the linear simulation dataset. It loads raster predictors, computes distance to water, resamples and masks all covariates to the Gorongosa National Park boundary, calculates summary statistics for scaling, samples candidate locations, simulates presence/absence data under a linear response surface, and saves the final list of simulated data frames.
+
+$$\Large{Y_i = \alpha + \beta_1 X_{i} + \beta_2X_{i}^2} + \epsilon_i$$
 
 ### `1.2_Semi_non_linear_data_generation.R`
-Generates semi-non-linear simulated presence/absence datasets. It loads raster predictors from `Satellite_images/`, computes distance to water from vector data in `Gorongosa_files/`, resamples and masks all layers to the Gorongosa National Park boundary, builds a large hyperparameter grid, simulates candidate datasets, and saves the first valid set of simulations along with calibration PNGs.
+Creates the semi-non-linear simulation dataset. It follows the same general structure as the linear generator, but uses a semi-non-linear response surface and a large hyperparameter grid to produce accepted simulated data frames and calibration figures.
+
+### `1.3_Non_linear_data_generation.R`
+Creates the non-linear simulation dataset. It uses the same environmental predictors and sampling framework, then simulates datasets under a more strongly non-linear response function and writes the final simulated data frames and calibration outputs.
+
+### Model fitting
+
+### `2.1_Linear_models.R`
+Fits logistic regression and random forest models to each linear simulated dataset. The script splits each dataset into training and testing sets, fits a logistic model with scaled predictors, tunes a random forest with a hyperparameter grid, stores the fitted models back into the simulation object, and records performance metrics such as sensitivity, specificity, TSS, and AUC.
+
+### `2.2_Semi_non_linear_models.R`
+Fits the same model types for the semi-non-linear simulation datasets. The workflow mirrors the linear model-fitting script, including data partitioning, logistic regression fitting, random forest tuning, and performance summarization.
+
+### `2.3_Non_linear_models.R`
+Fits logistic regression and random forest models for the non-linear simulation datasets. As with the other model-fitting scripts, it stores fitted models in the simulation object and calculates summary performance measures for each dataset.
+
+### Analysis and evaluation
+
+### `3.0_spatial_autocorrelation_test.R`
+Estimates the local range of spatial autocorrelation for the environmental predictors. It samples raster values, fits quadratic trend surfaces, computes original and residual variograms, fits candidate variogram models, saves diagnostic plots, and builds a summary table of estimated ranges and variogram parameters. It also explores how hexagonal sampling distance affects the number of evaluation points.
 
 ### `3.1_Linear_analysis.R`
-Evaluates the linear simulation scenario. It rebuilds the environmental raster stack, creates sampling points, computes true probabilities, predicts with logistic regression and random forest models, saves probability maps, and calculates summary error metrics.
+Evaluates the linear simulation scenario. It rebuilds the raster stack, computes true probability surfaces, predicts probabilities from the fitted logistic regression and random forest models, saves probability maps, extracts predicted values at sampling locations, and writes model comparison metrics.
 
 ### `3.2_Semi_non_linear_analysis.R`
-Evaluates the semi-non-linear simulation scenario. It follows the same general workflow as the linear analysis script: rebuild the raster stack, generate sampling points, compute true probabilities, predict with fitted models, save figures, and summarize prediction error.
+Evaluates the semi-non-linear simulation scenario. It uses the same analysis workflow as the linear script, producing true, logistic regression, and random forest probability surfaces and exporting summary metrics and figures.
 
 ### `3.3_Non_linear_analysis.R`
-Evaluates the non-linear simulation scenario. It loads the simulated datasets and fitted models, rebuilds the raster predictors, predicts true, logistic regression, and random forest probability surfaces, writes prediction maps, and exports probability and metric summaries.
+Evaluates the non-linear simulation scenario. It loads the simulated datasets and fitted models, rebuilds the environmental rasters, predicts true and model-based probability surfaces, saves maps, extracts values at evaluation points, and writes summary metrics.
 
-### `Testing_11.R`
-A diagnostic and exploratory script for the non-linear scenario. It computes model comparison metrics and produces quick visual summaries for checking distributions of error statistics.
+## Data and output folders
 
-## Key folders
+### `Satellite_images/`
+Raster source data used to build the environmental predictor stack.
 
-- `Data/Final_data/` — final RDS and CSV outputs from the simulation study
-- `Data/Figures/` — diagnostic figures, variogram plots, and predicted probability maps
-- `Data/Cal_images/` — calibration plots created during data generation
-- `Satellite_images/` — raster source data used to build predictors
-- `Gorongosa_files/` — spatial vector data for the park boundary, rivers, and lake
+### `Gorongosa_files/`
+Vector data for the park boundary, rivers, lake, and related spatial inputs.
 
-## Notes
+### `Data/Final_data/`
+Final RDS and CSV outputs from the simulation study, including simulated datasets, predicted probabilities, and performance summaries.
+
+### `Data/Figures/`
+Diagnostic figures, variogram plots, and predicted probability maps.
+
+### `Data/Cal_images/`
+Calibration plots created during data generation.
+
+### `Data/Old/`
+Older intermediate outputs and archived files.
+
+## Reproducibility notes
 
 - The scripts assume the project root is the working directory.
-- Some script and output file names do not match exactly across versions of the project. If a script fails to find an input file, check the names in `Data/Final_data/`.
-- Several scripts create large raster objects, so memory usage can be high.
+- Most scripts begin by clearing the workspace and graphics device before loading packages.
+- Several scripts rebuild the predictor stack from source rasters and shapefiles, so the raw input files must remain available.
+- Some file names differ slightly across script versions, so if a script fails to find an input file, check the names in `Data/Final_data/`.
 
-## Reproducibility
+## Dependencies
 
-Most scripts begin by clearing the workspace and graphics device, loading the required packages, and rebuilding the predictor stack from source files. This means they are intended to be run from a clean session.
+Common packages used across the scripts include `terra`, `sf`, `tidyverse`, `ranger`, `caret`, `pROC`, `doSNOW`, `parallel`, `gstat`, `spdep`, `sdmTMB`, `viridis`, `sp`, `raster`, and `adehabitatHR`.
