@@ -6,23 +6,17 @@ graphics.off()
 # =============== #
 
 {
-  library(tidyverse)
-  library(caret)
-  library(pROC)
-  library(ranger)
-  library(parallel)
-  library(doSNOW)
   library(terra)
   library(sf)
-  library(sdmTMB)
   library(viridis)
+  library(ranger)
+  library(tidyverse)
 }
 
 # READ IN THE DATA: ####
 # ================= #
 
-sdf <- readRDS("./Data/Simple_50_data_frames_with_models.rds")
-# meep <- readRDS("./Data/simple_data_frames.rds")
+sdf <- readRDS("./Data/Final_data/Linear_200_data_frames_with_models.rds")
 
 # --------------------------------------------------------------------------------------------------- #
 # --------------------------------------------------------------------------------------------------- #
@@ -189,6 +183,8 @@ sdf <- readRDS("./Data/Simple_50_data_frames_with_models.rds")
   rm(rivers, lake, rst, lake_rst, rivers_rst, water)
 
   # Resample rasters to the same resolution:
+  # ---------------------------------------- #
+
   cat("Resampling rasters...", "\n")
   rst <- terra::rast("./Satellite_images/Elevation/elevation_export.tif")
 
@@ -198,7 +194,6 @@ sdf <- readRDS("./Data/Simple_50_data_frames_with_models.rds")
   ptc <- resample(x = ptc_mean, y = rst)
   pnt <- resample(x = pnt_mean, y = rst)
   pnv <- resample(x = pnv_mean, y = rst)
-  elev <- resample(x = elev, y = rst)
   slope <- resample(x = slope, y = rst)
   soil <- resample(x = soil_rst, y = rst)
   water_dist <- resample(x = water_dist, y = rst)
@@ -215,6 +210,8 @@ sdf <- readRDS("./Data/Simple_50_data_frames_with_models.rds")
   )
 
   # Load park boundary:
+  # ------------------- #
+
   gnp <- st_read(
     "./Gorongosa_files/GNP_shp/WDPA_WDOECM_Sep2025_Public_801_shp-polygons.shp",
     quiet = T
@@ -225,6 +222,8 @@ sdf <- readRDS("./Data/Simple_50_data_frames_with_models.rds")
   gnp <- st_transform(gnp, "epsg:32736") # Set the CRS
 
   # Crop and mask the stack:
+  # ------------------------ #
+
   cat("Masking and cropping rasters...", "\n")
   ndvi <- mask(crop(ndvi, gnp), gnp)
   evi <- mask(crop(evi, gnp), gnp)
@@ -250,26 +249,11 @@ sdf <- readRDS("./Data/Simple_50_data_frames_with_models.rds")
     water_dist
   )
 
-  prob_rst <- c(ndvi, lai, water_dist, ptc)
-
   cat("Calculating raster statistics...", "\n")
   ndvi_stats <- global(ndvi, fun = c("mean", "sd"), na.rm = TRUE)
   water_stats <- global(water_dist, fun = c("mean", "sd"), na.rm = TRUE)
   ptc_stats <- global(ptc, fun = c("mean", "sd"), na.rm = TRUE)
   lai_stats <- global(lai, fun = c("mean", "sd"), na.rm = TRUE)
-
-  # Pre-extract stats columns and convert to vectors for faster access:
-  ndvi_mean <- ndvi_stats[1, 1]
-  ndvi_sd <- ndvi_stats[1, 2]
-
-  water_mean <- water_stats[1, 1]
-  water_sd <- water_stats[1, 2]
-
-  ptc_mean <- ptc_stats[1, 1]
-  ptc_sd <- ptc_stats[1, 2]
-
-  lai_mean <- lai_stats[1, 1]
-  lai_sd <- lai_stats[1, 2]
 
   # Remove unnecessary objects
   rm(
@@ -278,7 +262,11 @@ sdf <- readRDS("./Data/Simple_50_data_frames_with_models.rds")
     pnt,
     pnv,
     slope,
-    soil
+    soil,
+    lai,
+    ndvi,
+    ptc,
+    water_dist
   )
   cat("Done!!!")
 }
@@ -312,10 +300,15 @@ rm(hex)
 # Create a data frame to store the probabilities for each model:
 probs <- data.frame(
   mod_id = factor(),
+  x = numeric(),
+  y = numeric(),
   true_p = numeric(),
   lr_p = numeric(),
   rf_p = numeric()
 )
+
+# Make a vector of the sampling points to extract the probabilities from the rasters:
+vect_p_true <- terra::vect(pts, geom = c("x", "y"), crs = "epsg:32736")
 
 # Define a function to extract the probabilities from the random forest model:
 rf_fun <- function(model, data, ...) {
@@ -328,9 +321,17 @@ rf_fun <- function(model, data, ...) {
 }
 
 system.time({
+  pb <- txtProgressBar(
+    min = 0,
+    max = length(sdf),
+    style = 3
+  )
+
+  start_time <- Sys.time()
+
   for (i in 1:length(sdf)) {
     # Print the progress of the model fitting and evaluation
-    cat("Calculating probabilities for model", i, "of", length(sdf), "\n")
+    # cat("Calculating probabilities for model", i, "of", length(sdf), "\n")
 
     # -------------------------------------------------------------------------- #
 
@@ -343,10 +344,10 @@ system.time({
     # ------------------------------------------------------- #
 
     # Scale the coefficients by the standard deviation of each raster:
-    b_ndvi <- sdf[[i]]$equation$beta_ndvi / ndvi_sd
-    b_water <- sdf[[i]]$equation$beta_water / water_sd
-    b_ptc <- sdf[[i]]$equation$beta_ptc / ptc_sd
-    b_lai <- sdf[[i]]$equation$beta_lai / lai_sd
+    b_ndvi <- sdf[[i]]$equation$beta_ndvi / ndvi_stats$sd
+    b_water <- sdf[[i]]$equation$beta_water / water_stats$sd
+    b_ptc <- sdf[[i]]$equation$beta_ptc / ptc_stats$sd
+    b_lai <- sdf[[i]]$equation$beta_lai / lai_stats$sd
 
     logit_rst <- (sdf[[i]]$equation$alpha +
       (b_ndvi * stack$ndvi) +
@@ -359,11 +360,35 @@ system.time({
     names(p_true_rst) <- "true_p"
     varnames(p_true_rst) <- "true_p"
 
-    vect_p_true <- terra::vect(pts, geom = c("x", "y"), crs = "epsg:32736")
+    # Save True probability maps as PNG files:
+    {
+      png(
+        filename = paste0(
+          "./Data/Figures/Linear_predictive_maps/True/L_True_surface_",
+          i,
+          ".png"
+        ),
+        width = 2000,
+        height = 2200,
+        res = 300
+      )
+
+      plot(
+        p_true_rst,
+        main = paste0(
+          "Simulated Linear Data Frame ",
+          i,
+          "\nTrue Probabilities"
+        ),
+        col = viridis(250)
+      )
+
+      dev.off()
+    }
 
     var <- terra::extract(p_true_rst, vect_p_true, ID = FALSE)
 
-    ture_p <- var$true_p
+    true_p <- var$true_p
 
     # -------------------------------------------------------------------------- #
 
@@ -379,7 +404,31 @@ system.time({
     names(lr_rst) <- "lr_p"
     varnames(lr_rst) <- "lr_p"
 
-    # plot(lr_rst, col = inferno(150))
+    # Save Logistic regression predicted probability maps as PNG files:
+    {
+      png(
+        filename = paste0(
+          "./Data/Figures/Linear_predictive_maps/LR/L_LR_prob_surface_",
+          i,
+          ".png"
+        ),
+        width = 2000,
+        height = 2200,
+        res = 300
+      )
+
+      plot(
+        lr_rst,
+        main = paste0(
+          "Simulated Linear Data Frame ",
+          i,
+          "\nLogistic Regression Probabilities"
+        ),
+        col = viridis(250)
+      )
+
+      dev.off()
+    }
 
     var <- terra::extract(lr_rst, vect_p_true, ID = FALSE)
 
@@ -402,10 +451,31 @@ system.time({
 
     na_mask <- is.na(stack[[1]])
     rf_rst[na_mask] <- NA
-    # rf_rst <- rf_rst[[2]]
 
     names(rf_rst) <- "rf_p"
     varnames(rf_rst) <- "rf_p"
+
+    # Save Random forest predicted probability maps as PNG files:
+    {
+      png(
+        filename = paste0(
+          "./Data/Figures/Linear_predictive_maps/RF/L_RF_prob_surface_",
+          i,
+          ".png"
+        ),
+        width = 2000,
+        height = 2200,
+        res = 300
+      )
+
+      plot(
+        rf_rst,
+        main = paste0("Simulated Linear Data Frame ", i, "\nRandom Forest"),
+        col = viridis(250)
+      )
+
+      dev.off()
+    }
 
     var <- terra::extract(rf_rst, vect_p_true, ID = FALSE)
 
@@ -418,16 +488,65 @@ system.time({
 
     temp <- data.frame(
       mod_id = mod_id,
-      true_p = ture_p,
+      x = pts$x,
+      y = pts$y,
+      true_p = true_p,
       lr_p = lr_p,
       rf_p = rf_p
     )
 
     probs <- rbind(probs, temp)
+
+    # -------------------------------------------------------------------------- #
+
+    # GARAGE COLLECT AND REMOVE UNNECESSARY OBJECTS:
+    # ---------------------------------------------- #
+
+    if (i %% 10 == 0) {
+      rm(
+        logit_rst,
+        p_true_rst,
+        lr_rst,
+        rf_rst
+      )
+      gc()
+    }
+
+    # -------------------------------------------------------------------------- #
+
+    # TRACK PROGRESS OF MODELS:
+    # ------------------------- #
+
+    # Update progress bar
+    setTxtProgressBar(pb, i)
+
+    # Print timing every 10 models
+    if (i %% 10 == 0) {
+      elapsed <- Sys.time() - start_time
+      avg_time <- elapsed / i
+      remaining <- avg_time * (length(sdf) - i)
+
+      cat(
+        "\nModel:",
+        i,
+        "/",
+        length(sdf),
+        "| Elapsed:",
+        round(elapsed, 1),
+        "| Estimated remaining:",
+        round(remaining, 1),
+        "\n"
+      )
+    }
   }
+  close(pb)
 })
 
-write.csv(probs, "./Data/simple_50_probabilities.csv", row.names = FALSE)
+write.csv(
+  probs,
+  "./Data/Final_data/Linear_200_probabilities.csv",
+  row.names = FALSE
+)
 
 rm(
   gnp,
@@ -474,18 +593,18 @@ rm(
 # CALCULATE THE ERRORS FOR EACH MODEL: ####
 # ==================================== #
 
-probs$lr_error <- (probs$true_p - probs$lr_p)
-probs$rf_error <- (probs$true_p - probs$rf_p)
-
-
-test <- probs |>
+metrics <- probs |>
   dplyr::mutate(
     lr_error = true_p - lr_p,
     rf_error = true_p - rf_p,
+    mod_error = lr_error - rf_error,
     mod_id = factor(mod_id)
   ) |>
   dplyr::group_by(mod_id) |>
   dplyr::summarise(
+    lr_error = mean(lr_error),
+    rf_error = mean(rf_error),
+    mod_error = mean(mod_error),
     lr_rmse = sqrt(mean(abs(lr_error)^2)),
     lr_mae = mean(abs(lr_error)),
     lr_bias = mean(lr_error),
@@ -498,158 +617,8 @@ test <- probs |>
     mae_error = lr_mae - rf_mae
   )
 
-
-# RMSE Stats:
-mean(test$lr_rmse)
-mean(test$rf_rmse)
-
-sd(test$lr_rmse)
-sd(test$rf_rmse)
-
-# MAE Stats:
-mean(test$lr_mae)
-mean(test$rf_mae)
-sd(test$lr_mae)
-sd(test$rf_mae)
-
-# Bias Stats:
-mean(test$lr_bias)
-mean(test$rf_bias)
-sd(test$lr_bias)
-sd(test$rf_bias)
-
-# Correlation Stats:
-mean(test$lr_cor)
-mean(test$rf_cor)
-sd(test$lr_cor)
-sd(test$rf_cor)
-
-range(probs$true_p)
-range(probs$lr_error)
-range(probs$rf_error)
-
-test_longer <- pivot_longer(
-  test,
-  cols = c(lr_rmse, rf_rmse),
-  names_to = "rmse",
-  values_to = "value"
+write.csv(
+  metrics,
+  "./Data/Final_data/Linear_200_model_metrics.csv",
+  row.names = FALSE
 )
-
-ggplot(test_longer, aes(x = value, fill = rmse)) +
-  geom_density(alpha = 0.5)
-
-
-ggplot(test_longer, aes(x = value, fill = rmse)) +
-  geom_density(alpha = 0.5) +
-  labs(
-    title = "Distribution of RMSE values for Logistic Regression and Random Forest models",
-    x = "RMSE",
-    y = "Density",
-    fill = "Model"
-  ) +
-  scale_fill_manual(
-    values = c("blue", "red"),
-    labels = c("Logistic Regression", "Random Forest")
-  ) +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(hjust = 0.5),
-    legend.position = "top"
-  )
-
-
-ggplot(test_longer, aes(x = rmse, y = value, fill = rmse)) +
-  geom_boxplot() +
-  labs(
-    title = "Boxplot of RMSE values for Logistic Regression and Random Forest models",
-    x = "Model",
-    y = "RMSE",
-    fill = "Model"
-  ) +
-  scale_fill_manual(
-    values = c("blue", "red"),
-    labels = c("Logistic Regression", "Random Forest")
-  ) +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(hjust = 0.5),
-    legend.position = "top"
-  )
-
-ggplot(test_longer, aes(x = value, fill = rmse)) +
-  geom_histogram(alpha = 0.5, position = "identity", bins = 15)
-
-test_longer_bias <- pivot_longer(
-  test,
-  cols = c(lr_bias, rf_bias),
-  names_to = "bias",
-  values_to = "value"
-)
-
-ggplot(test_longer_bias, aes(x = value, fill = bias)) +
-  geom_density(alpha = 0.5) +
-  labs(
-    title = "Distribution of Bias values for Logistic Regression and Random Forest models",
-    x = "Bias",
-    y = "Density",
-    fill = "Model"
-  ) +
-  scale_fill_manual(
-    values = c("blue", "red"),
-    labels = c("Logistic Regression", "Random Forest")
-  ) +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(hjust = 0.5),
-    legend.position = "top"
-  )
-
-test_longer_mae <- pivot_longer(
-  test,
-  cols = c(lr_mae, rf_mae),
-  names_to = "mae",
-  values_to = "value"
-)
-
-ggplot(test_longer_mae, aes(x = value, fill = mae)) +
-  geom_density(alpha = 0.5) +
-  labs(
-    title = "Distribution of MAE values for Logistic Regression and Random Forest models",
-    x = "MAE",
-    y = "Density",
-    fill = "Model"
-  ) +
-  scale_fill_manual(
-    values = c("blue", "red"),
-    labels = c("Logistic Regression", "Random Forest")
-  ) +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(hjust = 0.5),
-    legend.position = "top"
-  )
-
-test_longer_cor <- pivot_longer(
-  test,
-  cols = c(lr_cor, rf_cor),
-  names_to = "cor",
-  values_to = "value"
-)
-
-ggplot(test_longer_cor, aes(x = value, fill = cor)) +
-  geom_density(alpha = 0.5) +
-  labs(
-    title = "Distribution of Correlation values for Logistic Regression and Random Forest models",
-    x = "Correlation",
-    y = "Density",
-    fill = "Model"
-  ) +
-  scale_fill_manual(
-    values = c("blue", "red"),
-    labels = c("Logistic Regression", "Random Forest")
-  ) +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(hjust = 0.5),
-    legend.position = "top"
-  )
