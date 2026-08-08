@@ -66,14 +66,9 @@ system.time({
       mod <- glm(
         presence ~
           scale(ndvi) +
-          scale(evi) +
           scale(lai) +
           scale(ptc) +
-          scale(pnt) +
-          scale(pnv) +
-          scale(elev) +
-          scale(water_dist) +
-          scale(clay),
+          scale(water_dist),
         data = train,
         family = binomial(link = "logit")
       )
