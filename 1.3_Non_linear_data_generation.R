@@ -281,12 +281,15 @@ system.time({
     cand_geom <- cand_points$geometry
     n_cand <- length(cand_geom)
 
+    # Create a progress bar to track the progress of the simulation
+    pb <- txtProgressBar(
+      min = 0,
+      max = 200,
+      style = 3
+    )
+
     # Simulation For Loop (vectorized):
     for (i in 1:nrow(hyper_grid)) {
-      if (i %% 100 == 0) {
-        cat("Creating data frame", i, "of", nrow(hyper_grid), "\n")
-      }
-
       # CALCULATE SCALED COEFFICIENTS (vectorized):
       b_ndvi <- beta_ndvi_vec[i] / ndvi_sd
       b_water <- beta_water_vec[i] / water_sd
@@ -365,9 +368,6 @@ system.time({
         kept <- kept + 1
         diag_index[kept] <- i
 
-        # Print the progress of the data frame creation
-        cat("Creating dataframe", kept, "of 200", "\n")
-
         # Extract presence geometries and create sf object:
         presences_geom <- cand_geom[presence_idx]
         presences_df <- st_sf(geometry = presences_geom, presence = 1)
@@ -425,6 +425,9 @@ system.time({
         )
 
         dev.off()
+
+        # Update the progress bar
+        setTxtProgressBar(pb, kept)
       } else {
         next # Skip to the next iteration if the condition is not met
       }
@@ -432,6 +435,8 @@ system.time({
       # Keep track of Loop process
       if (kept == 200) break
     }
+
+    close(pb) # Close the progress bar
 
     # Remove unnecessary objects
     rm(
