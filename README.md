@@ -74,8 +74,6 @@ Diagnostic figures, variogram plots, and predicted probability maps.
 ### `Data/Cal_images/`
 Calibration plots created during data generation.
 
-### `Data/Old/`
-Older intermediate outputs and archived files.
 
 ## Reproducibility notes
 
