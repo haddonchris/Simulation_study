@@ -116,7 +116,7 @@ system.time({
   # ----------------- #
   # Create a hyperparameter grid for tuning the random forest model:
   hyper_grid <- expand.grid(
-    mtry = seq(2, 12, by = 1),
+    mtry = c(1, 2, 3, 4),
     node_size = c(1, 2, 3, 4, 6, 8, 10, 15)
   )
 
@@ -173,7 +173,7 @@ system.time({
           model <- ranger(
             formula = factor(presence, levels = c(0, 1)) ~ .,
             data = train,
-            num.trees = 500,
+            num.trees = 750,
             mtry = hyper_grid$mtry[j],
             min.node.size = hyper_grid$node_size[j],
             sample.fraction = 0.7,
@@ -203,7 +203,7 @@ system.time({
       rf <- ranger(
         formula = factor(presence, levels = c(0, 1)) ~ .,
         data = train,
-        num.trees = 500,
+        num.trees = 750,
         mtry = best$mtry,
         min.node.size = best$node_size,
         sample.fraction = 0.7,
