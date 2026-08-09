@@ -159,10 +159,18 @@ graphics.off()
 
     # Calculate the mean and standard deviation for the rasters (for scaling the coefficients)
     cat("Calculating raster statistics...", "\n")
-    ndvi_stats <- global(ndvi, fun = c("mean", "sd"), na.rm = TRUE)
-    water_stats <- global(water_dist, fun = c("mean", "sd"), na.rm = TRUE)
-    ptc_stats <- global(ptc, fun = c("mean", "sd"), na.rm = TRUE)
-    lai_stats <- global(lai, fun = c("mean", "sd"), na.rm = TRUE)
+    ndvi_stats <- global(
+      ndvi,
+      fun = c("mean", "sd", "min", "max"),
+      na.rm = TRUE
+    )
+    water_stats <- global(
+      water_dist,
+      fun = c("mean", "sd", "min", "max"),
+      na.rm = TRUE
+    )
+    ptc_stats <- global(ptc, fun = c("mean", "sd", "min", "max"), na.rm = TRUE)
+    lai_stats <- global(lai, fun = c("mean", "sd", "min", "max"), na.rm = TRUE)
   }
 
   cat("Done!!!")
