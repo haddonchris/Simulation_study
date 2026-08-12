@@ -323,7 +323,7 @@ system.time({
         main = paste0(
           "Simulated Linear Data Frame ",
           i,
-          "\nLogistic Regression Probabilities"
+          "\nLogistic Regression"
         ),
         col = viridis(250)
       )

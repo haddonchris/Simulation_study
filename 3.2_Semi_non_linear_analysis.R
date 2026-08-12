@@ -325,7 +325,7 @@ system.time({
         main = paste0(
           "Simulated Semi-Non-Linear Data Frame ",
           i,
-          "\nLinear Regression Probabilities"
+          "\nLinear Regression"
         ),
         col = viridis(250)
       )
