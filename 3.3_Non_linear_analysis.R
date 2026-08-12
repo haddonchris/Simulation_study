@@ -438,7 +438,7 @@ system.time({
     iteration_time <- as.numeric(difftime(
       Sys.time(),
       iteration_start,
-      units = "secs"
+      units = "mins"
     ))
 
     elapsed <- as.numeric(difftime(Sys.time(), start_time, units = "mins"))
@@ -455,7 +455,7 @@ system.time({
     cat(
       "\r",
       sprintf(
-        "Progress: %5.1f%% | Model: %d/%d | Iteration: %.1fs | Elapsed: %.1fm | Remaining: %.1fm | ETA: %s",
+        "Progress: %5.1f%% | Model: %d/%d | Iteration: %.1fm | Elapsed: %.1fm | Remaining: %.1fm | ETA: %s",
         percent,
         i,
         length(sdf),
@@ -469,13 +469,9 @@ system.time({
 
     # Flush the console to update the progress bar
     flush.console()
-  }
+  } # End of the for loop
 
-  write.csv(
-    probs,
-    "./Data/Final_data/Non_linear_200_probabilities.csv",
-    row.names = FALSE
-  )
+  # -------------------------------------------------------------------------- #
 
   # Clear objects from the environment to free up memory
   rm(
@@ -493,18 +489,6 @@ system.time({
     b_water,
     vect_p_true,
     i,
-    lai,
-    ndvi,
-    ptc,
-    water_dist,
-    lai_mean,
-    lai_sd,
-    ndvi_mean,
-    ndvi_sd,
-    ptc_mean,
-    ptc_sd,
-    water_mean,
-    water_sd,
     true_p,
     lr_p,
     rf_p,
@@ -516,6 +500,69 @@ system.time({
     estimated_end,
     iteration_start
   )
+
+  # -------------------------------------------------------------------------- #
+
+  # SAVE THE RAW PROBABILITIES TO A CSV FILE:
+  # ========================================= #
+
+  write.csv(
+    probs,
+    "./Data/Final_data/Non_linear_200_probabilities.csv",
+    row.names = FALSE
+  )
+
+  # -------------------------------------------------------------------------- #
+
+  # CALCULATE THE METRICS FOR EACH MODEL: ####
+  # ==================================== #
+
+  # Calculate the metrics for the Random Forest models
+  rf_metrics <- probs |>
+    dplyr::select(-c(x, y, lr_p)) |>
+    mutate(rf_error = true_p - rf_p) |>
+    dplyr::relocate(mod_id, rf_error, true_p, rf_p) |>
+    dplyr::group_by(mod_id) |>
+    dplyr::summarise(
+      sim = "NL",
+      mod_type = "Random Forest",
+      rmse = sqrt(mean(abs(rf_error)^2)),
+      mae = mean(abs(rf_error)),
+      bias = mean(rf_error),
+      cor = cor(rf_p, true_p)
+    ) |>
+    dplyr::ungroup()
+
+  # Calculate the metrics for the Logistic Regression models
+  lr_metrics <- probs |>
+    dplyr::select(-c(x, y, rf_p)) |>
+    mutate(lr_error = true_p - lr_p) |>
+    dplyr::relocate(mod_id, lr_error, true_p, lr_p) |>
+    dplyr::group_by(mod_id) |>
+    dplyr::summarise(
+      sim = "NL",
+      mod_type = "Logistic Regression",
+      rmse = sqrt(mean(abs(lr_error)^2)),
+      mae = mean(abs(lr_error)),
+      bias = mean(lr_error),
+      cor = cor(lr_p, true_p)
+    ) |>
+    dplyr::ungroup()
+
+  # Combine the metrics for both models into a single data frame
+  metrics <- rbind(rf_metrics, lr_metrics)
+
+  # Save the metrics to a CSV file
+  write.csv(
+    metrics,
+    "./Data/Final_data/Non_linear_200_model_metrics.csv",
+    row.names = FALSE
+  )
+
+  # Remove the unnecessary objects
+  rm(rf_metrics, lr_metrics)
+
+  # -------------------------------------------------------------------------- #
 
   # TIME METRICS FOR THE LOOP:
   # ========================== #
@@ -542,40 +589,3 @@ system.time({
 
   rm(start_time, end_time, total_time)
 })
-
-
-# --------------------------------------------------------------------------------------------------- #
-# --------------------------------------------------------------------------------------------------- #
-
-# CALCULATE THE ERRORS FOR EACH MODEL: ####
-# ==================================== #
-
-metrics <- probs |>
-  dplyr::mutate(
-    lr_error = true_p - lr_p,
-    rf_error = true_p - rf_p,
-    mod_error = lr_error - rf_error,
-    mod_id = factor(mod_id)
-  ) |>
-  dplyr::group_by(mod_id) |>
-  dplyr::summarise(
-    lr_error = mean(lr_error),
-    rf_error = mean(rf_error),
-    mod_error = mean(mod_error),
-    lr_rmse = sqrt(mean(abs(lr_error)^2)),
-    lr_mae = mean(abs(lr_error)),
-    lr_bias = mean(lr_error),
-    lr_cor = cor(lr_p, true_p),
-    rf_rmse = sqrt(mean(abs(rf_error)^2)),
-    rf_mae = mean(abs(rf_error)),
-    rf_bias = mean(rf_error),
-    rf_cor = cor(rf_p, true_p),
-    rmse_error = lr_rmse - rf_rmse,
-    mae_error = lr_mae - rf_mae
-  )
-
-write.csv(
-  metrics,
-  "./Data/Final_data/Non_linear_200_model_metrics.csv",
-  row.names = FALSE
-)
