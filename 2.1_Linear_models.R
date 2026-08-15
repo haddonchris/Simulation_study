@@ -26,7 +26,7 @@ graphics.off()
 # READ IN THE DATA: ####
 # ================= #
 
-sdf <- readRDS("./Data/Final_data/Linear_data_200_data_frames.rds")
+sdf <- readRDS("./Data/Final_data/Linear_data.rds")
 
 # --------------------------------------------------------------------------------------------------- #
 # --------------------------------------------------------------------------------------------------- #
@@ -272,11 +272,11 @@ rm(
 
 saveRDS(
   sdf,
-  "./Data/Final_data/Linear_200_data_frames_with_models.rds"
+  "./Data/Final_data/Linear_data_with_models.rds"
 )
 
 write.csv(
   model_performance,
-  "./Data/Final_data/Linear_200_data_frames_model_performance.csv",
+  "./Data/Final_data/Linear_model_performance.csv",
   row.names = FALSE
 )

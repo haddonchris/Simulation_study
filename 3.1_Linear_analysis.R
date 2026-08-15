@@ -16,7 +16,7 @@ graphics.off()
 # READ IN THE DATA: ####
 # ================= #
 
-sdf <- readRDS("./Data/Final_data/Linear_200_data_frames_with_models.rds")
+sdf <- readRDS("./Data/Final_data/Linear_data_with_models.rds")
 
 # --------------------------------------------------------------------------------------------------- #
 # --------------------------------------------------------------------------------------------------- #
@@ -495,7 +495,7 @@ system.time({
 
   write.csv(
     probs,
-    "./Data/Final_data/Linear_200_probabilities.csv",
+    "./Data/Final_data/Linear_probability_comparison.csv",
     row.names = FALSE
   )
 
@@ -542,7 +542,7 @@ system.time({
   # Save the metrics to a CSV file
   write.csv(
     metrics,
-    "./Data/Final_data/Linear_200_model_metrics.csv",
+    "./Data/Final_data/Linear_truth_comparison_metrics.csv",
     row.names = FALSE
   )
 
