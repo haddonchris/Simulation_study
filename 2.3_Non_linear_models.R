@@ -26,7 +26,7 @@ graphics.off()
 # READ IN THE DATA: ####
 # ================= #
 
-sdf <- readRDS("./Data/Final_data/Non_linear_data_200_data_frames.rds")
+sdf <- readRDS("./Data/Final_data/Non_linear_data.rds")
 
 # --------------------------------------------------------------------------------------------------- #
 # --------------------------------------------------------------------------------------------------- #
@@ -36,8 +36,9 @@ sdf <- readRDS("./Data/Final_data/Non_linear_data_200_data_frames.rds")
 
 # Create an empty data frame to store the model performance metrics:
 model_performance <- data.frame(
-  Model_type = character(), # Model type (e.g., logistic regression, random forest)
-  model_id = character(), # Unique identifier for each model/data frame
+  mod_id = character(), # Model type (e.g., logistic regression, random forest)
+  sim = character(),
+  mod_type = character(), # Unique identifier for each model/data frame
   Sensitivity = numeric(), # Sensitivity (true positive rate)
   Specificity = numeric(), # Specificity (true negative rate)
   TSS = numeric(), # True Skill Statistic (TSS = Sensitivity + Specificity - 1)
@@ -84,14 +85,15 @@ system.time({
       conf_mat <- caret::confusionMatrix(pred_class_lr, obs)
 
       # Store the model performance metrics in the data frame:
-      model_performance[i, 1] <- "logistic_regression"
-      model_performance[i, 2] <- sdf[[i]]$mod_id
-      model_performance[i, 3] <- conf_mat$byClass["Sensitivity"]
-      model_performance[i, 4] <- conf_mat$byClass["Specificity"]
-      model_performance[i, 5] <- (conf_mat$byClass["Sensitivity"] +
+      model_performance[i, 1] <- sdf[[i]]$mod_id
+      model_performance[i, 2] <- "NL"
+      model_performance[i, 3] <- "Logistic Regression"
+      model_performance[i, 4] <- conf_mat$byClass["Sensitivity"]
+      model_performance[i, 5] <- conf_mat$byClass["Specificity"]
+      model_performance[i, 6] <- (conf_mat$byClass["Sensitivity"] +
         conf_mat$byClass["Specificity"] -
         1)
-      model_performance[i, 6] <- auc(roc(test$presence, pred_lr, quiet = TRUE))
+      model_performance[i, 7] <- auc(roc(test$presence, pred_lr, quiet = TRUE))
     }
   }
 
@@ -226,14 +228,15 @@ system.time({
       conf_mat <- confusionMatrix(pred_class_rf, obs)
 
       # Store the model performance metrics in the data frame:
-      model_performance[i + n, 1] <- "Random_Forest"
-      model_performance[i + n, 2] <- sdf[[i]]$mod_id
-      model_performance[i + n, 3] <- conf_mat$byClass["Sensitivity"]
-      model_performance[i + n, 4] <- conf_mat$byClass["Specificity"]
-      model_performance[i + n, 5] <- conf_mat$byClass["Sensitivity"] +
+      model_performance[i + n, 1] <- sdf[[i]]$mod_id
+      model_performance[i + n, 2] <- "NL"
+      model_performance[i + n, 3] <- "Random Forest"
+      model_performance[i + n, 4] <- conf_mat$byClass["Sensitivity"]
+      model_performance[i + n, 5] <- conf_mat$byClass["Specificity"]
+      model_performance[i + n, 6] <- conf_mat$byClass["Sensitivity"] +
         conf_mat$byClass["Specificity"] -
         1
-      model_performance[i + n, 6] <- auc(roc(
+      model_performance[i + n, 7] <- auc(roc(
         test$presence,
         pred_rf,
         quiet = TRUE
@@ -273,11 +276,11 @@ rm(
 
 saveRDS(
   sdf,
-  "./Data/Final_data/Non_linear_200_data_frames_with_models.rds"
+  "./Data/Final_data/Non_linear_data_with_models.rds"
 )
 
 write.csv(
   model_performance,
-  "./Data/Final_data/Non_linear_model_performance_metrics.csv",
+  "./Data/Final_data/Non_linear_model_performance.csv",
   row.names = F
 )

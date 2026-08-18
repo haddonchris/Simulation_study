@@ -16,7 +16,7 @@ graphics.off()
 # READ IN THE DATA: ####
 # ================= #
 
-sdf <- readRDS("./Data/Final_data/Non_linear_200_data_frames_with_models.rds")
+sdf <- readRDS("./Data/Final_data/Non_linear_data_with_models.rds")
 
 # --------------------------------------------------------------------------------------------------- #
 # --------------------------------------------------------------------------------------------------- #
@@ -172,7 +172,6 @@ sdf <- readRDS("./Data/Final_data/Non_linear_200_data_frames_with_models.rds")
   cat("Done!!!")
 }
 
-
 # --------------------------------------------------------------------------------------------------- #
 # --------------------------------------------------------------------------------------------------- #
 
@@ -239,30 +238,26 @@ system.time({
     # CALCULATE THE TRUE PROBABILITIES FOR THE CURRENT MODEL:
     # ------------------------------------------------------- #
 
-    # Scale the coefficients by the standard deviation of each raster:
-    b_ndvi <- sdf[[i]]$equation$beta_ndvi / ndvi_stats$sd
-    b_water <- sdf[[i]]$equation$beta_water / water_stats$sd
-    b_ptc <- sdf[[i]]$equation$beta_ptc / ptc_stats$sd
-    b_lai <- sdf[[i]]$equation$beta_lai / lai_stats$sd
-
     logit_rst <- sdf[[i]]$equation$alpha +
-      (b_ndvi *
+      (sdf[[i]]$equation$beta_ndvi *
         exp(
           -(stack$ndvi - sdf[[i]]$equation$mu_ndvi)^2 /
             (2 * sdf[[i]]$equation$sigma_ndvi^2)
         )) +
-      (b_water *
+      (sdf[[i]]$equation$beta_water *
         exp(
           -sdf[[i]]$equation$k_water * stack$water_dist
         )) +
-      (b_ptc *
+      (sdf[[i]]$equation$beta_ptc *
         (1 /
           (1 +
             exp(
               -sdf[[i]]$equation$k_ptc *
                 (stack$ptc - sdf[[i]]$equation$c_ptc)
             )))) +
-      (b_lai * (-((stack$lai - sdf[[i]]$equation$mu_lai)^2)))
+      (sdf[[i]]$equation$beta_lai *
+        (-(((stack$lai - sdf[[i]]$equation$mu_lai) /
+          sdf[[i]]$equation$r_lai[i])^2)))
 
     p_true_rst <- 1 / (1 + exp(-logit_rst))
 
@@ -508,7 +503,7 @@ system.time({
 
   write.csv(
     probs,
-    "./Data/Final_data/Non_linear_200_probabilities.csv",
+    "./Data/Final_data/Non_linear_probability_comparison.csv",
     row.names = FALSE
   )
 
@@ -555,7 +550,7 @@ system.time({
   # Save the metrics to a CSV file
   write.csv(
     metrics,
-    "./Data/Final_data/Non_linear_200_model_metrics.csv",
+    "./Data/Final_data/Non_linear_truth_comparison_metrics.csv",
     row.names = FALSE
   )
 

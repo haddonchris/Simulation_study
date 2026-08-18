@@ -164,11 +164,6 @@ graphics.off()
       fun = c("mean", "sd", "min", "max"),
       na.rm = TRUE
     )
-    water_stats <- global(
-      water_dist,
-      fun = c("mean", "sd", "min", "max"),
-      na.rm = TRUE
-    )
     ptc_stats <- global(ptc, fun = c("mean", "sd", "min", "max"), na.rm = TRUE)
     lai_stats <- global(lai, fun = c("mean", "sd", "min", "max"), na.rm = TRUE)
   }
@@ -187,17 +182,18 @@ graphics.off()
 {
   set.seed(3791)
   hyper_grid <- data.frame(
-    beta_ndvi = runif(1000000, -2, 2),
-    beta_water = runif(1000000, -2, 2),
-    beta_ptc = runif(1000000, -2, 2),
-    beta_lai = runif(1000000, -2, 2),
-    alpha = runif(1000000, -2, 2),
-    mu_ndvi = runif(1000000, min = ndvi_stats$min, max = ndvi_stats$max),
-    sigma_ndvi = runif(1000000, 0.10, 0.50) * (ndvi_stats$max - ndvi_stats$min),
-    mu_lai = runif(1000000, min = lai_stats$min, max = lai_stats$max),
-    k_water = log(2) / runif(1000000, 100, 17000),
-    k_ptc = 6 / runif(1000000, 5, 50),
-    c_ptc = runif(1000000, ptc_stats$min, ptc_stats$max)
+    beta_ndvi = runif(200000, -2, 2),
+    beta_water = runif(2000000, -2, 2),
+    beta_ptc = runif(2000000, -2, 2),
+    beta_lai = runif(2000000, -2, 2),
+    alpha = runif(2000000, -2, 2),
+    mu_ndvi = runif(2000000, min = ndvi_stats$min, max = ndvi_stats$max),
+    sigma_ndvi = runif(200000, 0.10, 0.50) * (ndvi_stats$max - ndvi_stats$min),
+    mu_lai = runif(2000000, min = lai_stats$min, max = lai_stats$max),
+    r_lai = max(lai_stats$max - lai_stats$min),
+    k_water = log(2) / runif(2000000, 100, 17000),
+    k_ptc = 6 / runif(2000000, 5, 50),
+    c_ptc = runif(2000000, ptc_stats$min, ptc_stats$max)
   )
 }
 
@@ -255,19 +251,6 @@ system.time({
     data_frames <- list()
     kept <- 0
 
-    # Pre-extract stats columns and convert to vectors for faster access:
-    ndvi_mean <- ndvi_stats[1, 1]
-    ndvi_sd <- ndvi_stats[1, 2]
-
-    water_mean <- water_stats[1, 1]
-    water_sd <- water_stats[1, 2]
-
-    ptc_mean <- ptc_stats[1, 1]
-    ptc_sd <- ptc_stats[1, 2]
-
-    lai_mean <- lai_stats[1, 1]
-    lai_sd <- lai_stats[1, 2]
-
     # Convert hyper_grid to vectors for faster indexing:
     beta_ndvi_vec <- hyper_grid[, 1]
     beta_water_vec <- hyper_grid[, 2]
@@ -277,9 +260,10 @@ system.time({
     mu_ndvi_vec <- hyper_grid[, 6]
     sigma_ndvi_vec <- hyper_grid[, 7]
     mu_lai_vec <- hyper_grid[, 8]
-    k_water_vec <- hyper_grid[, 9]
-    k_ptc_vec <- hyper_grid[, 10]
-    c_ptc_vec <- hyper_grid[, 11]
+    r_lai_vec <- hyper_grid[, 9]
+    k_water_vec <- hyper_grid[, 10]
+    k_ptc_vec <- hyper_grid[, 11]
+    c_ptc_vec <- hyper_grid[, 12]
 
     # Extract candidate points data as vectors for faster computation:
     cand_ndvi <- cand_points$NDVI
@@ -298,30 +282,24 @@ system.time({
 
     # Simulation For Loop (vectorized):
     for (i in 1:nrow(hyper_grid)) {
-      # CALCULATE SCALED COEFFICIENTS (vectorized):
-      b_ndvi <- beta_ndvi_vec[i] / ndvi_sd
-      b_water <- beta_water_vec[i] / water_sd
-      b_ptc <- beta_ptc_vec[i] / ptc_sd
-      b_lai <- beta_lai_vec[i] / lai_sd # Using LAI stats for scaling LAI
-
-      #
+      # Calculate the non-linear transformations for each covariate (vectorized):
       g_ndvi <- exp(
         -(cand_ndvi - mu_ndvi_vec[i])^2 /
           (2 * sigma_ndvi_vec[i]^2)
       )
-      g_lai <- -((cand_lai - mu_lai_vec[i])^2)
+      g_lai <- -(((cand_lai - mu_lai_vec[i]) / r_lai_vec[i])^2)
 
       g_water <- exp(-k_water_vec[i] * cand_water)
 
       g_ptc <- 1 /
-        (1 + exp(-hyper_grid$k_ptc[i] * (cand_ptc - hyper_grid$c_ptc[i])))
+        (1 + exp(-k_ptc_vec[i] * (cand_ptc - c_ptc_vec[i])))
 
       # DEFINE THE EQUATION AND CALCULATE PROBABILITIES:
       logit_p <- alpha_vec[i] +
-        b_ndvi * g_ndvi +
-        b_water * g_water +
-        b_ptc * g_ptc +
-        b_lai * g_lai
+        beta_ndvi_vec[i] * g_ndvi +
+        beta_water_vec[i] * g_water +
+        beta_ptc_vec[i] * g_ptc +
+        beta_lai_vec[i] * g_lai
       # Convert logit to probability:
       p_true <- plogis(logit_p)
 
@@ -338,23 +316,23 @@ system.time({
       diagnostics$p_sd[i] <- sd(p_true)
       diagnostics$p_min[i] <- min(p_true)
       diagnostics$p_max[i] <- max(p_true)
-      diagnostics$p_low[i] <- mean(p_true < 0.05)
-      diagnostics$p_high[i] <- mean(p_true > 0.95)
+      diagnostics$p_low[i] <- mean(p_true < 0.10)
+      diagnostics$p_high[i] <- mean(p_true > 0.90)
 
       # --------------------------------------------------------------------------------------------------- #
 
       # FILTERING CONDITIONS:
       # ===================== #
 
-      if (diagnostics$eta_sd[i] < 2.5 || diagnostics$eta_sd[i] > 7.5) {
+      if (diagnostics$eta_sd[i] < 0.75 || diagnostics$eta_sd[i] > 0.84) {
         next # Skip to the next iteration if the condition is met
       }
 
-      if (diagnostics$p_mean[i] < 0.3 || diagnostics$p_mean[i] > 0.7) {
+      if (diagnostics$p_mean[i] < 0.29 || diagnostics$p_mean[i] > 0.39) {
         next # Skip to the next iteration if the condition is met
       }
 
-      if (diagnostics$p_sd[i] < 0.2 || diagnostics$p_sd[i] > 0.4) {
+      if (diagnostics$p_sd[i] < 0.16 || diagnostics$p_sd[i] > 0.18) {
         next # Skip to the next iteration if the condition is met
       }
 
@@ -396,22 +374,22 @@ system.time({
         # ------------------------------------------------------------ #
 
         f_ndvi <- exp(
-          -(stack$ndvi - hyper_grid$mu_ndvi[i])^2 /
-            (2 * hyper_grid$sigma_ndvi[i]^2)
+          -(stack$ndvi - mu_ndvi_vec[i])^2 /
+            (2 * sigma_ndvi_vec[i]^2)
         )
-        f_lai <- -((stack$lai - hyper_grid$mu_lai[i])^2)
+        f_lai <- -(((stack$lai - mu_lai_vec[i]) / r_lai_vec[i])^2)
 
-        f_water <- exp(-hyper_grid$k_water[i] * stack$water_dist)
+        f_water <- exp(-k_water_vec[i] * stack$water_dist)
 
         f_ptc <- 1 /
-          (1 + exp(-hyper_grid$k_ptc[i] * (stack$ptc - hyper_grid$c_ptc[i])))
+          (1 + exp(-k_ptc_vec[i] * (stack$ptc - c_ptc_vec[i])))
 
         # Create probability raster:
         logit_rst <- alpha_vec[i] +
-          (b_ndvi * f_ndvi) +
-          (b_water * f_water) +
-          (b_ptc * f_ptc) +
-          (b_lai * f_lai)
+          (beta_ndvi_vec[i] * f_ndvi) +
+          (beta_water_vec[i] * f_water) +
+          (beta_ptc_vec[i] * f_ptc) +
+          (beta_lai_vec[i] * f_lai)
 
         p_true_rst <- 1 / (1 + exp(-logit_rst))
 
@@ -533,5 +511,5 @@ system.time({
 
 saveRDS(
   data_frames,
-  "./Data/Final_data/Non_linear_data_200_data_frames.rds"
+  "./Data/Final_data/Non_linear_data.rds"
 )
