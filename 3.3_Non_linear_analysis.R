@@ -257,7 +257,7 @@ system.time({
             )))) +
       (sdf[[i]]$equation$beta_lai *
         (-(((stack$lai - sdf[[i]]$equation$mu_lai) /
-          sdf[[i]]$equation$r_lai[i])^2)))
+          sdf[[i]]$equation$r_lai)^2)))
 
     p_true_rst <- 1 / (1 + exp(-logit_rst))
 
