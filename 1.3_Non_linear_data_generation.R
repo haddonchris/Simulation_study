@@ -431,15 +431,15 @@ system.time({
       next # Neither water nor PTC moves by a meaningful amount within the observed range — reject
     }
 
-    if (diagnostics$eta_sd[i] < 2.0 || diagnostics$eta_sd[i] > 5.0) {
+    if (diagnostics$eta_sd[i] < 2.5 || diagnostics$eta_sd[i] > 4.2) {
       next # Skip to the next iteration if the condition is met
     }
 
-    if (diagnostics$p_mean[i] < 0.27 || diagnostics$p_mean[i] > 0.4) {
+    if (diagnostics$p_mean[i] < 0.30 || diagnostics$p_mean[i] > 0.37) {
       next # Skip to the next iteration if the condition is met
     }
 
-    if (diagnostics$p_sd[i] < 0.23 || diagnostics$p_sd[i] > 0.28) {
+    if (diagnostics$p_sd[i] < 0.24 || diagnostics$p_sd[i] > 0.27) {
       next # Skip to the next iteration if the condition is met
     }
 
