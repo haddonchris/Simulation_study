@@ -178,25 +178,6 @@ graphics.off()
 # GENERATE SIMULATED DATA: ####
 # ======================== #
 
-# Create a hyper grid with all of the parameters for the simulated data frames
-{
-  set.seed(3791)
-  hyper_grid <- data.frame(
-    beta_ndvi = runif(200000, -2, 2),
-    beta_water = runif(2000000, -2, 2),
-    beta_ptc = runif(2000000, -2, 2),
-    beta_lai = runif(2000000, -2, 2),
-    alpha = runif(2000000, -2, 2),
-    mu_ndvi = runif(2000000, min = ndvi_stats$min, max = ndvi_stats$max),
-    sigma_ndvi = runif(200000, 0.10, 0.50) * (ndvi_stats$max - ndvi_stats$min),
-    mu_lai = runif(2000000, min = lai_stats$min, max = lai_stats$max),
-    r_lai = max(lai_stats$max - lai_stats$min),
-    k_water = log(2) / runif(2000000, 100, 17000),
-    k_ptc = 6 / runif(2000000, 5, 50),
-    c_ptc = runif(2000000, ptc_stats$min, ptc_stats$max)
-  )
-}
-
 # Create an empty list for all of the data frames to go into
 data_frames <- list()
 
@@ -222,11 +203,14 @@ data_frames <- list()
   cand_points$ptc <- terra::extract(ptc, coords)[, 1]
   cand_points$lai <- terra::extract(lai, coords)[, 1]
   cand_points$dist_water <- terra::extract(water_dist, coords)[, 1]
+
+  ndvi_q20_80 <- quantile(cand_points$NDVI, probs = c(0.20, 0.80), na.rm = TRUE)
+  lai_q20_80 <- quantile(cand_points$lai, probs = c(0.20, 0.80), na.rm = TRUE)
 }
 
 # Create a data frame to store diagnostics for each simulation:
 diagnostics <- data.frame(
-  sim = seq(1, nrow(hyper_grid)),
+  sim = seq(1, 2000000),
   eta_sd = NA_real_,
   p_mean = NA_real_,
   p_sd = NA_real_,
@@ -244,8 +228,22 @@ system.time({
   {
     set.seed(3791)
 
-    # Randomise the hyper grid and sample 1,000,000 rows for the simulation:
-    hyper_grid <- hyper_grid[sample(nrow(hyper_grid), nrow(hyper_grid)), ]
+    # Create a hyper grid with all of the parameters for the simulated data frames
+    hyper_grid <- data.frame(
+      beta_ndvi = runif(2000000, -2, 2),
+      beta_water = runif(2000000, -2, 2),
+      beta_ptc = runif(2000000, -2, 2),
+      beta_lai = runif(2000000, -2, 2),
+      alpha = runif(2000000, -2, 2),
+      mu_ndvi = runif(2000000, min = ndvi_q20_80[1], max = ndvi_q20_80[2]),
+      sigma_ndvi = runif(2000000, 0.10, 0.50) *
+        (ndvi_stats$max - ndvi_stats$min),
+      mu_lai = runif(2000000, min = lai_q20_80[1], max = lai_q20_80[2]),
+      r_lai = max(lai_stats$max - lai_stats$min),
+      k_water = log(2) / runif(2000000, 100, 17000),
+      k_ptc = 6 / runif(2000000, 5, 50),
+      c_ptc = runif(2000000, ptc_stats$min, ptc_stats$max)
+    )
 
     # Create an empty list for all of the data frames to go into
     data_frames <- list()
@@ -324,15 +322,15 @@ system.time({
       # FILTERING CONDITIONS:
       # ===================== #
 
-      if (diagnostics$eta_sd[i] < 0.75 || diagnostics$eta_sd[i] > 0.84) {
+      if (diagnostics$eta_sd[i] < 0.61 || diagnostics$eta_sd[i] > 1.0) {
         next # Skip to the next iteration if the condition is met
       }
 
-      if (diagnostics$p_mean[i] < 0.29 || diagnostics$p_mean[i] > 0.39) {
+      if (diagnostics$p_mean[i] < 0.2 || diagnostics$p_mean[i] > 0.4) {
         next # Skip to the next iteration if the condition is met
       }
 
-      if (diagnostics$p_sd[i] < 0.16 || diagnostics$p_sd[i] > 0.18) {
+      if (diagnostics$p_sd[i] < 0.13 || diagnostics$p_sd[i] > 0.2) {
         next # Skip to the next iteration if the condition is met
       }
 
@@ -395,7 +393,7 @@ system.time({
 
         png(
           filename = paste0(
-            "./Data/Cal_images/Non_linear_calibration/Simulated_data_frame_",
+            "./Data/Cal_images/Non_linear_calibration/test3/Simulated_data_frame_",
             kept,
             ".png"
           ),
