@@ -163,6 +163,11 @@ graphics.off()
     water_stats <- global(water_dist, fun = c("mean", "sd"), na.rm = TRUE)
     ptc_stats <- global(ptc, fun = c("mean", "sd"), na.rm = TRUE)
     lai_stats <- global(lai, fun = c("mean", "sd"), na.rm = TRUE)
+
+    ndvi_range <- terra::minmax(ndvi, compute = TRUE)
+    water_range <- terra::minmax(water_dist, compute = TRUE)
+    ptc_range <- terra::minmax(ptc, compute = TRUE)
+    lai_range <- terra::minmax(lai, compute = TRUE)
   }
 
   cat("Done!!!")
@@ -174,6 +179,31 @@ graphics.off()
 # GENERATE SIMULATED DATA: ####
 # ======================== #
 
+# Function to sample z values excluding a specific range (e.g., around 1):
+sample_z_excluding_one <- function(
+  n,
+  lower = 0.1,
+  upper = 4,
+  excl_low = 0.5,
+  excl_high = 1.5
+) {
+  # Two allowed segments: [lower, excl_low) and (excl_high, upper]
+  w1 <- excl_low - lower
+  w2 <- upper - excl_high
+  total_w <- w1 + w2
+
+  # Split n draws between the two segments proportional to their width,
+  # so the result is still uniform density over the *allowed* region
+  n1 <- rbinom(1, n, w1 / total_w)
+  n2 <- n - n1
+
+  z <- c(
+    runif(n1, lower, excl_low),
+    runif(n2, excl_high, upper)
+  )
+  sample(z) # shuffle so segment membership isn't tied to row position
+}
+
 # Create a hyper grid with all of the parameters for the simulated data frames
 {
   set.seed(3791)
@@ -183,10 +213,10 @@ graphics.off()
     beta_ptc = runif(1000000, -2, 2),
     beta_lai = runif(1000000, -2, 2),
     alpha = runif(1000000, -2, 2),
-    z_ndvi = runif(1000000, 0.1, 1.5),
-    z_water = runif(1000000, 0.1, 2),
-    z_ptc = runif(1000000, 0.1, 3),
-    z_lai = runif(1000000, 0.1, 2.5)
+    z_ndvi = sample_z_excluding_one(1000000),
+    z_water = sample_z_excluding_one(1000000),
+    z_ptc = sample_z_excluding_one(1000000),
+    z_lai = sample_z_excluding_one(1000000)
   )
 }
 
@@ -270,6 +300,15 @@ system.time({
     cand_geom <- cand_points$geometry
     n_cand <- length(cand_geom)
 
+    cand_ndvi_norm <- (cand_ndvi - ndvi_range["min", 1]) /
+      (ndvi_range["max", 1] - ndvi_range["min", 1])
+    cand_water_norm <- (cand_water - water_range["min", 1]) /
+      (water_range["max", 1] - water_range["min", 1])
+    cand_ptc_norm <- (cand_ptc - ptc_range["min", 1]) /
+      (ptc_range["max", 1] - ptc_range["min", 1])
+    cand_lai_norm <- (cand_lai - lai_range["min", 1]) /
+      (lai_range["max", 1] - lai_range["min", 1])
+
     # Create a progress bar to track the progress of the simulation
     pb <- txtProgressBar(
       min = 0,
@@ -280,17 +319,21 @@ system.time({
     # Simulation For Loop (vectorized):
     for (i in 1:nrow(hyper_grid)) {
       # CALCULATE SCALED COEFFICIENTS (vectorized):
-      b_ndvi <- beta_ndvi_vec[i] / ndvi_sd
-      b_water <- beta_water_vec[i] / water_sd
-      b_ptc <- beta_ptc_vec[i] / ptc_sd
-      b_lai <- beta_lai_vec[i] / lai_sd # Using LAI stats for scaling LAI
+      ndvi_term <- cand_ndvi_norm^z_ndvi_vec[i]
+      water_term <- cand_water_norm^z_water_vec[i]
+      ptc_term <- cand_ptc_norm^z_ptc_vec[i]
+      lai_term <- cand_lai_norm^z_lai_vec[i]
 
-      # DEFINE THE EQUATION AND CALCULATE PROBABILITIES:
+      b_ndvi <- beta_ndvi_vec[i] / sd(ndvi_term)
+      b_water <- beta_water_vec[i] / sd(water_term)
+      b_ptc <- beta_ptc_vec[i] / sd(ptc_term)
+      b_lai <- beta_lai_vec[i] / sd(lai_term)
+
       logit_p <- alpha_vec[i] +
-        b_ndvi * (cand_ndvi^z_ndvi_vec[i]) +
-        b_water * (cand_water^z_water_vec[i]) +
-        b_ptc * (cand_ptc^z_ptc_vec[i]) +
-        b_lai * (cand_lai^z_lai_vec[i])
+        b_ndvi * ndvi_term +
+        b_water * water_term +
+        b_ptc * ptc_term +
+        b_lai * lai_term
 
       # Convert logit to probability:
       p_true <- plogis(logit_p)
@@ -314,15 +357,15 @@ system.time({
       # FILTERING CONDITIONS:
       # ===================== #
 
-      if (diagnostics$eta_sd[i] < 2.1 || diagnostics$eta_sd[i] > 3.0) {
+      if (diagnostics$eta_sd[i] < 1.634 || diagnostics$eta_sd[i] > 2.5) {
         next # Skip to the next iteration if the condition is met
       }
 
-      if (diagnostics$p_mean[i] < 0.3 || diagnostics$p_mean[i] > 0.7) {
+      if (diagnostics$p_mean[i] < 0.21 || diagnostics$p_mean[i] > 0.5) {
         next # Skip to the next iteration if the condition is met
       }
 
-      if (diagnostics$p_sd[i] < 0.3 || diagnostics$p_sd[i] > 0.35) {
+      if (diagnostics$p_sd[i] < 0.24 || diagnostics$p_sd[i] > 0.33) {
         next # Skip to the next iteration if the condition is met
       }
 
@@ -357,18 +400,36 @@ system.time({
 
         data_frames[[kept]] <- list(
           df = sim_data,
-          equation = hyper_grid[i, ]
+          equation = data.frame(
+            alpha = alpha_vec[i],
+            b_ndvi = b_ndvi,
+            b_water = b_water,
+            b_ptc = b_ptc,
+            b_lai = b_lai,
+            z_ndvi = z_ndvi_vec[i],
+            z_water = z_water_vec[i],
+            z_ptc = z_ptc_vec[i],
+            z_lai = z_lai_vec[i]
+          )
         )
 
         # Create a raster of the true probabilities for visualization:
         # ------------------------------------------------------------ #
 
-        # Create probability raster:
+        stack_ndvi_norm <- (stack$ndvi - ndvi_range["min", 1]) /
+          (ndvi_range["max", 1] - ndvi_range["min", 1])
+        stack_water_norm <- (stack$water_dist - water_range["min", 1]) /
+          (water_range["max", 1] - water_range["min", 1])
+        stack_ptc_norm <- (stack$ptc - ptc_range["min", 1]) /
+          (ptc_range["max", 1] - ptc_range["min", 1])
+        stack_lai_norm <- (stack$lai - lai_range["min", 1]) /
+          (lai_range["max", 1] - lai_range["min", 1])
+
         logit_rst <- alpha_vec[i] +
-          (b_ndvi * (stack$ndvi^z_ndvi_vec[i])) +
-          (b_water * (stack$water_dist^z_water_vec[i])) +
-          (b_ptc * (stack$ptc^z_ptc_vec[i])) +
-          (b_lai * (stack$lai^z_lai_vec[i]))
+          (b_ndvi * (stack_ndvi_norm^z_ndvi_vec[i])) +
+          (b_water * (stack_water_norm^z_water_vec[i])) +
+          (b_ptc * (stack_ptc_norm^z_ptc_vec[i])) +
+          (b_lai * (stack_lai_norm^z_lai_vec[i]))
 
         p_true_rst <- 1 / (1 + exp(-logit_rst))
 

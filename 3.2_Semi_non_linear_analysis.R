@@ -164,6 +164,21 @@ sdf <- readRDS(
   ptc_stats <- global(ptc, fun = c("mean", "sd"), na.rm = TRUE)
   lai_stats <- global(lai, fun = c("mean", "sd"), na.rm = TRUE)
 
+  ndvi_range <- terra::minmax(ndvi, compute = TRUE)
+  water_range <- terra::minmax(water_dist, compute = TRUE)
+  ptc_range <- terra::minmax(ptc, compute = TRUE)
+  lai_range <- terra::minmax(lai, compute = TRUE)
+
+  # Normalize the rasters to a 0-1 scale:
+  stack_ndvi_norm <- (stack$ndvi - ndvi_range["min", 1]) /
+    (ndvi_range["max", 1] - ndvi_range["min", 1])
+  stack_water_norm <- (stack$water_dist - water_range["min", 1]) /
+    (water_range["max", 1] - water_range["min", 1])
+  stack_ptc_norm <- (stack$ptc - ptc_range["min", 1]) /
+    (ptc_range["max", 1] - ptc_range["min", 1])
+  stack_lai_norm <- (stack$lai - lai_range["min", 1]) /
+    (lai_range["max", 1] - lai_range["min", 1])
+
   # Remove unnecessary objects
   rm(
     lai,
@@ -242,16 +257,16 @@ system.time({
     # ------------------------------------------------------- #
 
     # Scale the coefficients by the standard deviation of each raster:
-    b_ndvi <- sdf[[i]]$equation$beta_ndvi / ndvi_stats$sd
-    b_water <- sdf[[i]]$equation$beta_water / water_stats$sd
-    b_ptc <- sdf[[i]]$equation$beta_ptc / ptc_stats$sd
-    b_lai <- sdf[[i]]$equation$beta_lai / lai_stats$sd
+    b_ndvi <- sdf[[i]]$equation$b_ndvi
+    b_water <- sdf[[i]]$equation$b_water
+    b_ptc <- sdf[[i]]$equation$b_ptc
+    b_lai <- sdf[[i]]$equation$b_lai
 
     logit_rst <- (sdf[[i]]$equation$alpha +
-      (b_ndvi * (stack$ndvi^sdf[[i]]$equation$z_ndvi)) +
-      (b_water * (stack$water_dist^sdf[[i]]$equation$z_water)) +
-      (b_ptc * (stack$ptc^sdf[[i]]$equation$z_ptc)) +
-      (b_lai * (stack$lai^sdf[[i]]$equation$z_lai)))
+      (b_ndvi * (stack_ndvi_norm^sdf[[i]]$equation$z_ndvi)) +
+      (b_water * (stack_water_norm^sdf[[i]]$equation$z_water)) +
+      (b_ptc * (stack_ptc_norm^sdf[[i]]$equation$z_ptc)) +
+      (b_lai * (stack_lai_norm^sdf[[i]]$equation$z_lai)))
 
     p_true_rst <- 1 / (1 + exp(-logit_rst))
 
@@ -468,10 +483,14 @@ system.time({
   # Clear objects from the environment to free up memory
   rm(
     gnp,
-    lai_stats,
-    ndvi_stats,
-    ptc_stats,
-    water_stats,
+    ndvi_range,
+    water_range,
+    ptc_range,
+    lai_range,
+    stack_ndvi_norm,
+    stack_water_norm,
+    stack_ptc_norm,
+    stack_lai_norm,
     pts,
     temp,
     var,
