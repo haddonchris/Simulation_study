@@ -164,7 +164,7 @@ system.time({
 
   vars <- c("ndvi", "ptc", "lai", "water_dist")
 
-  for (i in 1:3) {
+  for (i in 1:20) {
     cat("Creating partial plots for", sdf[[i]]$mod_id, "\n")
 
     data <- as.data.frame(sdf[[i]]$df) |>

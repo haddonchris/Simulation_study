@@ -164,7 +164,7 @@ system.time({
 
   vars <- c("ndvi", "ptc", "lai", "water_dist")
 
-  for (i in 1:3) {
+  for (i in 1:10) {
     cat("Creating partial plots for", sdf[[i]]$mod_id, "\n")
 
     data <- as.data.frame(sdf[[i]]$df) |>
@@ -235,72 +235,79 @@ system.time({
         )
       )
 
-      response_plot <- data.frame(
-        Predictor = base_vals[[focal_var]],
-        True = base_vals$True,
-        RF = predict(sdf[[i]]$rf_mod, data = base_vals)$predictions[, "1"],
-        LR = predict(sdf[[i]]$lr_mod, newdata = base_vals, type = "response")
-      ) |>
-        pivot_longer(
-          cols = c(True, RF, LR),
-          names_to = "Model",
-          values_to = "Probability"
-        ) |>
-        ggplot(
-          aes(
-            x = Predictor,
-            y = Probability,
-            colour = Model
-          )
-        ) +
-        geom_line(linewidth = 2) +
-        labs(
-          y = "Predicted Probability",
-          x = x_lab
-        ) +
-        scale_colour_manual(
-          values = c(
-            "True" = "black",
-            "LR" = "#A87B38",
-            "RF" = "#535E31"
-          ),
-          labels = c(
-            "True" = "True relationship",
-            "LR" = "Logistic Regression",
-            "RF" = "Random Forest"
-          )
-        ) +
-        theme(
-          panel.background = element_rect(
-            fill = "white",
-            colour = "white"
-          ),
-          axis.line = element_line(
-            colour = "black",
-            linewidth = 0.8
-          ),
-          axis.text = element_text(
-            size = 16,
-            colour = "black"
-          ),
-          axis.title = element_text(
-            size = 20
-          ),
-          legend.key.height = unit(0.65, "cm"),
-          legend.key.width = unit(0.65, "cm"),
-          legend.key = element_rect(
-            fill = "white",
-            colour = "white"
-          ),
-          legend.title = element_blank(),
-          legend.text = element_text(
-            size = 18
-          ),
-          legend.box = element_blank(),
-          legend.position = "bottom"
-        )
+      # response_plot <- data.frame(
+      #   Predictor = base_vals[[focal_var]],
+      #   True = base_vals$True,
+      #   RF = predict(sdf[[i]]$rf_mod, data = base_vals)$predictions[, "1"],
+      #   LR = predict(sdf[[i]]$lr_mod, newdata = base_vals, type = "response")
+      # ) |>
+      #   pivot_longer(
+      #     cols = c(True, RF, LR),
+      #     names_to = "Model",
+      #     values_to = "Probability"
+      #   ) |>
+      #   ggplot(
+      #     aes(
+      #       x = Predictor,
+      #       y = Probability,
+      #       colour = Model
+      #     )
+      #   ) +
+      #   geom_line(linewidth = 2) +
+      #   labs(
+      #     y = "Predicted Probability",
+      #     x = x_lab
+      #   ) +
+      #   scale_colour_manual(
+      #     values = c(
+      #       "True" = "black",
+      #       "LR" = "#A87B38",
+      #       "RF" = "#535E31"
+      #     ),
+      #     labels = c(
+      #       "True" = "True relationship",
+      #       "LR" = "Logistic Regression",
+      #       "RF" = "Random Forest"
+      #     )
+      #   ) +
+      #   theme(
+      #     panel.background = element_rect(
+      #       fill = "white",
+      #       colour = "white"
+      #     ),
+      #     axis.line = element_line(
+      #       colour = "black",
+      #       linewidth = 0.8
+      #     ),
+      #     axis.text = element_text(
+      #       size = 16,
+      #       colour = "black"
+      #     ),
+      #     axis.title = element_text(
+      #       size = 20
+      #     ),
+      #     legend.key.height = unit(0.65, "cm"),
+      #     legend.key.width = unit(0.65, "cm"),
+      #     legend.key = element_rect(
+      #       fill = "white",
+      #       colour = "white"
+      #     ),
+      #     legend.title = element_blank(),
+      #     legend.text = element_text(
+      #       size = 18
+      #     ),
+      #     legend.box = element_blank(),
+      #     legend.position = "bottom"
+      #   )
 
-      response_plot
+      # response_plot
+
+      test <- data.frame(
+        Predictor = base_vals[[focal_var]],
+        True_logit = true_logit
+      ) |>
+        ggplot(aes(x = Predictor, y = True_logit)) +
+        geom_line()
 
       ggsave(
         paste0(
@@ -308,14 +315,29 @@ system.time({
           sdf[[i]]$mod_id,
           "_",
           vars[j],
-          ".png"
+          "_test.png"
         ),
-        plot = response_plot,
+        plot = test,
         units = "cm",
         width = 25,
         height = 20,
         dpi = 1500
       )
+
+      # ggsave(
+      #   paste0(
+      #     "./Data/Figures/Response_test/Response_plot_",
+      #     sdf[[i]]$mod_id,
+      #     "_",
+      #     vars[j],
+      #     ".png"
+      #   ),
+      #   plot = response_plot,
+      #   units = "cm",
+      #   width = 25,
+      #   height = 20,
+      #   dpi = 1500
+      # )
 
       # response_plots[[i]][[focal_var]] <- response_plot
     }

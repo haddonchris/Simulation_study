@@ -9,146 +9,146 @@ graphics.off()
   library(tidyverse)
 }
 
-# {
-#   # NDVI:
-#   # ----
-#   cat("Getting NDVI data...", "\n")
+{
+  # NDVI:
+  # ----
+  cat("Getting NDVI data...", "\n")
 
-#   # Read in the files as a data frame:
-#   ndvi_files <- data.frame(
-#     files = list.files(
-#       # List all of the file names and add as a column in a data frame
-#       path = "./Satellite_images/NDVI",
-#       pattern = "\\.tif$",
-#       full.names = TRUE
-#     )
-#   )
+  # Read in the files as a data frame:
+  ndvi_files <- data.frame(
+    files = list.files(
+      # List all of the file names and add as a column in a data frame
+      path = "./Satellite_images/NDVI",
+      pattern = "\\.tif$",
+      full.names = TRUE
+    )
+  )
 
-#   # Create a Mean NDVI value raster
-#   ndvi_mean <- mean(terra::rast(ndvi_files$files)) # Read in the files as a raster stack
-#   names(ndvi_mean) <- "ndvi"
-#   rm(ndvi_files)
+  # Create a Mean NDVI value raster
+  ndvi_mean <- mean(terra::rast(ndvi_files$files)) # Read in the files as a raster stack
+  names(ndvi_mean) <- "ndvi"
+  rm(ndvi_files)
 
-#   # Leaf Area Index:
-#   # ----------------
-#   cat("Getting LAI data...", "\n")
-#   lai_files <- data.frame(
-#     files = list.files(
-#       # List all of the file names and add as a column in a data frame
-#       path = "./Satellite_images/LAI",
-#       pattern = "\\.tif$",
-#       full.names = TRUE
-#     )
-#   )
-#   lai_mean <- mean(terra::rast(lai_files$files))
-#   names(lai_mean) <- "lai"
-#   rm(lai_files)
+  # Leaf Area Index:
+  # ----------------
+  cat("Getting LAI data...", "\n")
+  lai_files <- data.frame(
+    files = list.files(
+      # List all of the file names and add as a column in a data frame
+      path = "./Satellite_images/LAI",
+      pattern = "\\.tif$",
+      full.names = TRUE
+    )
+  )
+  lai_mean <- mean(terra::rast(lai_files$files))
+  names(lai_mean) <- "lai"
+  rm(lai_files)
 
-#   # Percent Canopy Cover:
-#   # ---------------------
-#   cat("Getting PTC data...", "\n")
-#   ptc_files <- data.frame(
-#     files = list.files(
-#       # List all of the file names and add as a column in a data frame
-#       path = "./Satellite_images/percent_canopy_cover",
-#       pattern = "\\.tif$",
-#       full.names = TRUE
-#     )
-#   )
+  # Percent Canopy Cover:
+  # ---------------------
+  cat("Getting PTC data...", "\n")
+  ptc_files <- data.frame(
+    files = list.files(
+      # List all of the file names and add as a column in a data frame
+      path = "./Satellite_images/percent_canopy_cover",
+      pattern = "\\.tif$",
+      full.names = TRUE
+    )
+  )
 
-#   # Create a Raster Stack:
-#   ptc_mean <- mean(terra::rast(ptc_files$files)) # Read in the files as a raster stack
-#   names(ptc_mean) <- "ptc"
-#   rm(ptc_files)
+  # Create a Raster Stack:
+  ptc_mean <- mean(terra::rast(ptc_files$files)) # Read in the files as a raster stack
+  names(ptc_mean) <- "ptc"
+  rm(ptc_files)
 
-#   # Distance to water:
-#   # ------------------
-#   cat("Getting water distance data...", "\n")
-#   rivers <- st_set_crs(
-#     st_read(
-#       "./Gorongosa_files/Rivers_pans/rivers_permanent_water.shp",
-#       quiet = T
-#     ),
-#     4326
-#   )
-#   rivers <- st_transform(rivers, 32736)
+  # Distance to water:
+  # ------------------
+  cat("Getting water distance data...", "\n")
+  rivers <- st_set_crs(
+    st_read(
+      "./Gorongosa_files/Rivers_pans/rivers_permanent_water.shp",
+      quiet = T
+    ),
+    4326
+  )
+  rivers <- st_transform(rivers, 32736)
 
-#   lake <- st_transform(
-#     st_read("./Gorongosa_files/Rivers_pans/lake_urema.shp", quiet = T),
-#     32736
-#   )
+  lake <- st_transform(
+    st_read("./Gorongosa_files/Rivers_pans/lake_urema.shp", quiet = T),
+    32736
+  )
 
-#   # Read in a random raster:
-#   rst <- terra::rast("./Satellite_images/Elevation/elevation_export.tif")
+  # Read in a random raster:
+  rst <- terra::rast("./Satellite_images/Elevation/elevation_export.tif")
 
-#   # Rasterize the images:
-#   lake_rst <- terra::rasterize(lake, rst, background = NA, touches = T)
+  # Rasterize the images:
+  lake_rst <- terra::rasterize(lake, rst, background = NA, touches = T)
 
-#   rivers_rst <- terra::rasterize(rivers, rst, background = NA, touches = T)
+  rivers_rst <- terra::rasterize(rivers, rst, background = NA, touches = T)
 
-#   # Combine the rasters:
-#   water <- cover(lake_rst, rivers_rst)
+  # Combine the rasters:
+  water <- cover(lake_rst, rivers_rst)
 
-#   # Extract the distance to water:
-#   water_dist <- terra::distance(water)
-#   names(water_dist) <- "water_dist"
-#   # plot(water_dist, col = inferno(150))
-#   rm(rivers, lake, rst, lake_rst, rivers_rst, water)
+  # Extract the distance to water:
+  water_dist <- terra::distance(water)
+  names(water_dist) <- "water_dist"
+  # plot(water_dist, col = inferno(150))
+  rm(rivers, lake, rst, lake_rst, rivers_rst, water)
 
-#   # Resample rasters to the same resolution:
-#   # ---------------------------------------- #
+  # Resample rasters to the same resolution:
+  # ---------------------------------------- #
 
-#   cat("Resampling rasters...", "\n")
-#   rst <- terra::rast("./Satellite_images/Elevation/elevation_export.tif")
+  cat("Resampling rasters...", "\n")
+  rst <- terra::rast("./Satellite_images/Elevation/elevation_export.tif")
 
-#   ndvi <- resample(x = ndvi_mean, y = rst)
-#   lai <- resample(x = lai_mean, y = rst)
-#   ptc <- resample(x = ptc_mean, y = rst)
-#   water_dist <- resample(x = water_dist, y = rst)
+  ndvi <- resample(x = ndvi_mean, y = rst)
+  lai <- resample(x = lai_mean, y = rst)
+  ptc <- resample(x = ptc_mean, y = rst)
+  water_dist <- resample(x = water_dist, y = rst)
 
-#   rm(
-#     rst,
-#     ndvi_mean,
-#     lai_mean,
-#     ptc_mean
-#   )
+  rm(
+    rst,
+    ndvi_mean,
+    lai_mean,
+    ptc_mean
+  )
 
-#   # Load park boundary:
-#   # ------------------- #
+  # Load park boundary:
+  # ------------------- #
 
-#   gnp <- st_read(
-#     "./Gorongosa_files/GNP_shp/WDPA_WDOECM_Sep2025_Public_801_shp-polygons.shp",
-#     quiet = T
-#   )
+  gnp <- st_read(
+    "./Gorongosa_files/GNP_shp/WDPA_WDOECM_Sep2025_Public_801_shp-polygons.shp",
+    quiet = T
+  )
 
-#   # Edit/Clean the data
-#   gnp <- gnp[1, 31]
-#   gnp <- st_transform(gnp, "epsg:32736") # Set the CRS
+  # Edit/Clean the data
+  gnp <- gnp[1, 31]
+  gnp <- st_transform(gnp, "epsg:32736") # Set the CRS
 
-#   # Crop and mask the stack:
-#   # ------------------------ #
+  # Crop and mask the stack:
+  # ------------------------ #
 
-#   cat("Masking and cropping rasters...", "\n")
-#   ndvi <- mask(crop(ndvi, gnp), gnp)
-#   lai <- mask(crop(lai, gnp), gnp)
-#   ptc <- mask(crop(ptc, gnp), gnp)
-#   water_dist <- mask(crop(water_dist, gnp), gnp)
+  cat("Masking and cropping rasters...", "\n")
+  ndvi <- mask(crop(ndvi, gnp), gnp)
+  lai <- mask(crop(lai, gnp), gnp)
+  ptc <- mask(crop(ptc, gnp), gnp)
+  water_dist <- mask(crop(water_dist, gnp), gnp)
 
-#   cat("Calculating raster statistics...", "\n")
-#   ndvi_stats <- global(ndvi, fun = c("mean", "sd"), na.rm = TRUE)
-#   water_stats <- global(water_dist, fun = c("mean", "sd"), na.rm = TRUE)
-#   ptc_stats <- global(ptc, fun = c("mean", "sd"), na.rm = TRUE)
-#   lai_stats <- global(lai, fun = c("mean", "sd"), na.rm = TRUE)
+  cat("Calculating raster statistics...", "\n")
+  ndvi_stats <- global(ndvi, fun = c("mean", "sd"), na.rm = TRUE)
+  water_stats <- global(water_dist, fun = c("mean", "sd"), na.rm = TRUE)
+  ptc_stats <- global(ptc, fun = c("mean", "sd"), na.rm = TRUE)
+  lai_stats <- global(lai, fun = c("mean", "sd"), na.rm = TRUE)
 
-#   # Remove unnecessary objects
-#   rm(
-#     lai,
-#     ndvi,
-#     ptc,
-#     water_dist
-#   )
-#   cat("Done!!!")
-# }
+  # Remove unnecessary objects
+  rm(
+    lai,
+    ndvi,
+    ptc,
+    water_dist
+  )
+  cat("Done!!!")
+}
 
 sdf <- readRDS("./Data/Final_data/Non_linear_data_with_models.rds")
 
@@ -164,7 +164,7 @@ system.time({
 
   vars <- c("ndvi", "ptc", "lai", "water_dist")
 
-  for (i in 1:10) {
+  for (i in 1:20) {
     cat("Creating partial plots for", sdf[[i]]$mod_id, "\n")
 
     data <- as.data.frame(sdf[[i]]$df) |>
@@ -246,72 +246,94 @@ system.time({
         )
       )
 
-      response_plot <- data.frame(
-        Predictor = base_vals[[focal_var]],
-        True = base_vals$True,
-        RF = predict(sdf[[i]]$rf_mod, data = base_vals)$predictions[, "1"],
-        LR = predict(sdf[[i]]$lr_mod, newdata = base_vals, type = "response")
-      ) |>
-        pivot_longer(
-          cols = c(True, RF, LR),
-          names_to = "Model",
-          values_to = "Probability"
-        ) |>
-        ggplot(
-          aes(
-            x = Predictor,
-            y = Probability,
-            colour = Model
-          )
-        ) +
-        geom_line(linewidth = 2) +
-        labs(
-          y = "Predicted Probability",
-          x = x_lab
-        ) +
-        scale_colour_manual(
-          values = c(
-            "True" = "black",
-            "LR" = "#A87B38",
-            "RF" = "#535E31"
-          ),
-          labels = c(
-            "True" = "True relationship",
-            "LR" = "Logistic Regression",
-            "RF" = "Random Forest"
-          )
-        ) +
-        theme(
-          panel.background = element_rect(
-            fill = "white",
-            colour = "white"
-          ),
-          axis.line = element_line(
-            colour = "black",
-            linewidth = 0.8
-          ),
-          axis.text = element_text(
-            size = 16,
-            colour = "black"
-          ),
-          axis.title = element_text(
-            size = 20
-          ),
-          legend.key.height = unit(0.65, "cm"),
-          legend.key.width = unit(0.65, "cm"),
-          legend.key = element_rect(
-            fill = "white",
-            colour = "white"
-          ),
-          legend.title = element_blank(),
-          legend.text = element_text(
-            size = 18
-          ),
-          legend.box = element_blank(),
-          legend.position = "bottom"
-        )
+      # response_plot <- data.frame(
+      #   Predictor = base_vals[[focal_var]],
+      #   True = base_vals$True,
+      #   RF = predict(sdf[[i]]$rf_mod, data = base_vals)$predictions[, "1"],
+      #   LR = predict(sdf[[i]]$lr_mod, newdata = base_vals, type = "response")
+      # ) |>
+      #   pivot_longer(
+      #     cols = c(True, RF, LR),
+      #     names_to = "Model",
+      #     values_to = "Probability"
+      #   ) |>
+      #   ggplot(
+      #     aes(
+      #       x = Predictor,
+      #       y = Probability,
+      #       colour = Model
+      #     )
+      #   ) +
+      #   geom_line(linewidth = 2) +
+      #   labs(
+      #     y = "Predicted Probability",
+      #     x = x_lab
+      #   ) +
+      #   scale_colour_manual(
+      #     values = c(
+      #       "True" = "black",
+      #       "LR" = "#A87B38",
+      #       "RF" = "#535E31"
+      #     ),
+      #     labels = c(
+      #       "True" = "True relationship",
+      #       "LR" = "Logistic Regression",
+      #       "RF" = "Random Forest"
+      #     )
+      #   ) +
+      #   theme(
+      #     panel.background = element_rect(
+      #       fill = "white",
+      #       colour = "white"
+      #     ),
+      #     axis.line = element_line(
+      #       colour = "black",
+      #       linewidth = 0.8
+      #     ),
+      #     axis.text = element_text(
+      #       size = 16,
+      #       colour = "black"
+      #     ),
+      #     axis.title = element_text(
+      #       size = 20
+      #     ),
+      #     legend.key.height = unit(0.65, "cm"),
+      #     legend.key.width = unit(0.65, "cm"),
+      #     legend.key = element_rect(
+      #       fill = "white",
+      #       colour = "white"
+      #     ),
+      #     legend.title = element_blank(),
+      #     legend.text = element_text(
+      #       size = 18
+      #     ),
+      #     legend.box = element_blank(),
+      #     legend.position = "bottom"
+      #   )
 
-      response_plot
+      # response_plot
+
+      # ggsave(
+      #   paste0(
+      #     "./Data/Figures/Response_test/Response_plot_",
+      #     sdf[[i]]$mod_id,
+      #     "_",
+      #     vars[j],
+      #     ".png"
+      #   ),
+      #   plot = response_plot,
+      #   units = "cm",
+      #   width = 25,
+      #   height = 20,
+      #   dpi = 1500
+      # )
+
+      test <- data.frame(
+        Predictor = base_vals[[focal_var]],
+        True_logit = true_logit
+      ) |>
+        ggplot(aes(x = Predictor, y = True_logit)) +
+        geom_line()
 
       ggsave(
         paste0(
@@ -319,9 +341,9 @@ system.time({
           sdf[[i]]$mod_id,
           "_",
           vars[j],
-          ".png"
+          "_test.png"
         ),
-        plot = response_plot,
+        plot = test,
         units = "cm",
         width = 25,
         height = 20,
