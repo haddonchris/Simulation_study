@@ -427,7 +427,7 @@ system.time({
       next # neither variable shows genuine within-range curvature — reject
     }
 
-    if (water_change < 0.1 && ptc_change < 0.1) {
+    if (water_change < 0.25 && ptc_change < 0.17) {
       next # Neither water nor PTC moves by a meaningful amount within the observed range — reject
     }
 
@@ -533,19 +533,28 @@ system.time({
 
   # Remove unnecessary objects
   rm(
-    b_1,
-    b_2,
-    b_3,
-    b_4,
-    b_5,
-    b_6,
-    beta_1_vec,
-    beta_2_vec,
-    beta_3_vec,
-    beta_4_vec,
-    beta_5_vec,
-    beta_6_vec,
-    c_vec,
+    beta_lai_vec,
+    beta_ndvi_vec,
+    beta_ptc_vec,
+    beta_water_vec,
+    f_lai,
+    f_ndvi,
+    f_ptc,
+    f_water,
+    g_lai,
+    g_ndvi,
+    g_ptc,
+    g_water,
+    c_ptc_vec,
+    k_ptc_vec,
+    k_water_vec,
+    logit_rst,
+    mu_lai_vec,
+    mu_ndvi_vec,
+    p_true_rst,
+    pb,
+    r_lai_vec,
+    sigma_ndvi_vec,
     cand_points,
     coords,
     i,
@@ -564,27 +573,34 @@ system.time({
     cand_geom,
     n_cand,
     n_presences,
-    ndvi_mean,
-    ndvi_sd,
-    water_mean,
-    water_sd,
-    ptc_mean,
-    ptc_sd,
     alpha_vec,
     hyper_grid,
     gnp,
     ndvi_stats,
     ptc_stats,
-    water_stats,
     ndvi,
     ptc,
     water_dist,
     lai_stats,
     cand_lai,
     lai,
-    lai_mean,
-    lai_sd,
-    kept
+    kept,
+    lai_q20_80,
+    ndvi_q20_80,
+    water_q5_95,
+    ptc_q20_80,
+    ndvi_turns,
+    ndvi_seq,
+    g_ndvi_seq,
+    lai_turns,
+    lai_seq,
+    g_lai_seq,
+    g_water_check,
+    water_check_seq,
+    water_change,
+    g_ptc_check,
+    ptc_check_seq,
+    ptc_change
   )
 
   # FILTER THE LISTS AND EDIT: ####
@@ -617,17 +633,6 @@ system.time({
   saveRDS(
     data_frames,
     "./Data/Final_data/Non_linear_data.rds"
-  )
-
-  write.csv(
-    diagnostics,
-    "./Data/Final_data/Non_linear_diagnostics.csv",
-    row.names = FALSE
-  )
-
-  saveRDS(
-    diag_index,
-    "./Data/Final_data/Non_linear_diag_index.rds"
   )
 })
 
