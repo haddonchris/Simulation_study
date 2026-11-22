@@ -251,7 +251,6 @@ system.time({
 rm(
   df,
   hyper_grid,
-  hyper_params,
   results,
   test,
   train,
@@ -267,6 +266,7 @@ rm(
   pred_rf,
   preds_rf,
   rf,
+  best,
   n
 )
 

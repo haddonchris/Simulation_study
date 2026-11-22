@@ -230,12 +230,42 @@ vect_p_true <- terra::vect(pts, geom = c("x", "y"), crs = "epsg:32736")
 
 # Define a function to extract the probabilities from the random forest model:
 rf_fun <- function(model, data, ...) {
-  p <- predict(model, data = data, type = "response")$predictions
+  p <- predict(
+    model,
+    data = data,
+    type = "response",
+    num.threads = 1
+  )$predictions
 
   if (is.matrix(p) || is.data.frame(p)) {
     p <- p[, "1"] # replace with the presence-class name if needed
   }
   as.numeric(p)
+}
+
+predict_with_retry <- function(..., max_attempts = 6, wait_seconds = 10) {
+  for (attempt in seq_len(max_attempts)) {
+    result <- tryCatch(
+      terra::predict(...),
+      error = function(e) e
+    )
+    if (!inherits(result, "error")) {
+      return(result)
+    }
+    message(sprintf(
+      "predict() failed (attempt %d/%d): %s",
+      attempt,
+      max_attempts,
+      conditionMessage(result)
+    ))
+    Sys.sleep(wait_seconds)
+  }
+  stop(
+    "terra::predict() failed after ",
+    max_attempts,
+    " attempts: ",
+    conditionMessage(result)
+  )
 }
 
 system.time({
@@ -313,12 +343,20 @@ system.time({
     # CALCULATE THE LOGISTIC REGRESSION PROBABILITIES FOR THE CURRENT MODEL:
     # ---------------------------------------------------------------------- #
 
-    lr_rst <- terra::predict(
+    # lr_rst <- terra::predict(
+    #   stack,
+    #   sdf[[i]]$lr_mod,
+    #   type = "response",
+    #   cores = parallel::detectCores() - 1
+    # )
+
+    lr_rst <- predict_with_retry(
       stack,
       sdf[[i]]$lr_mod,
       type = "response",
       cores = parallel::detectCores() - 1
     )
+
     names(lr_rst) <- "lr_p"
     varnames(lr_rst) <- "lr_p"
 
@@ -361,7 +399,17 @@ system.time({
     # CALCULATE THE LOGISTIC REGRESSION PROBABILITIES FOR THE CURRENT MODEL:
     # ---------------------------------------------------------------------- #
 
-    rf_rst <- terra::predict(
+    # rf_rst <- terra::predict(
+    #   stack,
+    #   sdf[[i]]$rf_mod,
+    #   type = "response",
+    #   fun = rf_fun,
+    #   cores = parallel::detectCores() - 1,
+    #   cpkgs = "ranger",
+    #   na.rm = TRUE
+    # )
+
+    rf_rst <- predict_with_retry(
       stack,
       sdf[[i]]$rf_mod,
       type = "response",
