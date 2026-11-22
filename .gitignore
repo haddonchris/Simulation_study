@@ -2,6 +2,7 @@
 satellite_images
 Gorongosa_files
 Data
+functional_form_plots
 
 # Files to ignore
 /Non-linear_200_data_simulation.docx
@@ -15,3 +16,7 @@ Data
 /Raster_plotting.R
 /Testing_equations_2.R
 /RMSE_graphs_OppGen_Poster.R
+/Testing_3.R
+/Testing_4.R
+/Testing_5.R
+/Testing_6.R

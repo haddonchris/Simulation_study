@@ -221,7 +221,6 @@ The input files are available from the author on request.
 
 ## Reproducibility notes
 
-
 - **Working directory:** the scripts assume the project root is the working directory.
 - **Clean sessions:** most scripts clear the workspace and graphics device before loading packages, so each one runs standalone.
 - **Random seeds:** all three data-generation scripts use seed `3791` for the candidate location pool, so every scenario draws on the same 20,000 locations and covariate values. Parameter draws and presence/absence outcomes still differ between scenarios, because each equation uses the random number stream differently and the acceptance filters differ. Datasets are therefore **not** paired across scenarios and should be treated as independent groups in any cross-scenario comparison. Within a scenario, LR and RF are fitted to the same 200 datasets, so model results are paired per dataset.
